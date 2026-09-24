@@ -37,7 +37,7 @@ Un chapitre n'est marqué `done` que si le juge l'accepte **et** que son marqueu
 ## Installation
 
 ```bash
-git clone <url-du-depot> ai_manual
+git clone https://github.com/damienraczy/ai_manual.git ai_manual
 cd ai_manual
 
 python3 -m venv .venv
@@ -193,15 +193,15 @@ pyproject.toml         packaging et configuration des tests
 
 ## Licence et propriété
 
-© Damien Raczy — tous droits réservés, sauf les autorisations ci-dessous.
+© 2026 Damien Raczy | (+687) 78 20 52 | damien@iod.nc — tous droits réservés, sauf les autorisations ci-dessous.
 
 Ce logiciel est la propriété de son auteur. Vous pouvez l'utiliser, le copier et l'adapter, **à deux conditions** :
 
 1. **Attribution.** L'auteur, Damien Raczy, doit toujours être cité, dans le code adapté comme dans toute œuvre qui en dérive ou qui l'utilise de façon significative.
-2. **Pas d'usage commercial.** Aucun usage lié à un gain financier n'est autorisé : pas de vente, pas de service payant, pas d'intégration à une offre commerciale.
+2. **Pas d'usage commercial.** Aucun usage lié à un gain financier n'est autorisé : pas de vente, pas de service payant, pas d'intégration à une offre commerciale, ni directement, ni indirectement.
 
 Toute autre utilisation nécessite l'accord écrit préalable de l'auteur.
 
-Ces conditions correspondent à celles de la licence [Creative Commons Attribution – Pas d'Utilisation Commerciale 4.0 (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/deed.fr).
+Ces conditions correspondent à celles de la licence [Creative Commons Attribution – Pas d'Utilisation Commerciale 4.0 (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/deed.fr), dont le texte complet figure dans le fichier [`LICENCE`](LICENCE).
 
 Le logiciel est fourni « tel quel », sans garantie d'aucune sorte. Les textes générés par les modèles de langage doivent être relus et vérifiés avant toute diffusion ; l'utilisateur reste responsable de ce qu'il publie et des coûts d'utilisation des API tierces.
