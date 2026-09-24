@@ -186,6 +186,7 @@ Le projet suit un développement piloté par les tests (RED → GREEN → REFACT
 ```
 manual_cli/            code source (CLI, génération, fournisseurs, traces, interface web)
 prompts/               prompts envoyés aux modèles
+assets/                image de prévisualisation sociale (1280x640)
 requirements/          critères de qualité utilisés par le juge
 tests/                 suite de tests
 params.example.yml     modèle de configuration à copier en params.yml

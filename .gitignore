@@ -13,6 +13,9 @@
 # Prompts
 !/prompts/
 
+# Image de prévisualisation sociale (1280x640)
+!/assets/
+
 # Critères de validation lus à l'exécution (requirements/requirements.yml)
 !/requirements/
 
