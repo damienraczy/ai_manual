@@ -1,0 +1,80 @@
+version: 1
+
+# Critères appliqués à TOUTES les sections.
+# severity: "bloquant" force une réécriture si non rempli ; "recommande" est signalé mais n'empêche pas l'acceptation.
+generic:
+  - id: definition_claire
+    description: "Chaque concept/technique abordé est clairement défini avant d'être illustré."
+    severity: bloquant
+
+  - id: coherence_toc
+    description: "Le contenu correspond exactement au titre et aux sous-sections annoncés dans la table des matières pour ce chapitre (aucune sous-section omise, aucune ajoutée)."
+    severity: bloquant
+
+  - id: exemples_concrets
+    description: "Au moins un exemple concret (prompt illustratif) est fourni pour chaque technique majeure présentée."
+    severity: bloquant
+
+  - id: avantages_limites
+    description: "Les avantages et les limites de chaque technique présentée sont explicités."
+    severity: bloquant
+
+  - id: style_langue
+    description: "Rédaction en français clair, professionnel et pédagogique ; les termes techniques établis restent en anglais (prompt, few-shot, token, etc.)."
+    severity: bloquant
+
+  - id: format_markdown
+    description: "Markdown propre : hiérarchie de titres cohérente avec la table des matières, listes, tableaux et blocs de code bien formés."
+    severity: bloquant
+
+  - id: marqueur_fin
+    description: "La section se termine par la ligne exacte « --- Fin de la section [numéro] — Dis « continue » pour la suivante --- » avec le bon numéro, et rien après."
+    severity: bloquant
+
+  - id: multi_modeles
+    description: "Quand c'est pertinent, des remarques ou variations sont données pour plusieurs familles de modèles, pas un seul fournisseur."
+    severity: recommande
+
+  - id: tableaux_comparatifs
+    description: "Un tableau comparatif ou récapitulatif est présent si la section compare plusieurs techniques ou variantes."
+    severity: recommande
+
+  - id: checklist
+    description: "Une checklist actionnable (bonnes pratiques) conclut ou ponctue la section."
+    severity: recommande
+
+  - id: anti_patterns
+    description: "Au moins un anti-pattern courant est mentionné avec son impact."
+    severity: recommande
+
+  - id: cas_usage
+    description: "Un cas d'usage réel (entreprise, recherche ou production) illustre l'application de la technique."
+    severity: recommande
+
+  - id: pas_de_repetition
+    description: "La section n'introduit pas de redite non motivée d'un concept déjà pleinement défini dans une section précédente (se fier au résumé mémoire fourni en contexte)."
+    severity: recommande
+
+# Critères additionnels par grande Partie de la table des matières.
+# La clé doit correspondre exactement au champ "titre" de la partie tel que généré dans la TOC
+# (ex. "Fondamentaux", "Techniques intermédiaires", ...). Modifiable/complétable librement.
+parties:
+  Fondamentaux:
+    - id: aucun_prerequis
+      description: "Le chapitre ne suppose aucune connaissance préalable en prompt engineering ; le vocabulaire technique introduit est expliqué au fil du texte."
+      severity: bloquant
+
+  Techniques avancées:
+    - id: tableau_comparatif_techniques
+      description: "Un tableau comparatif explicite des techniques de raisonnement structuré présentées dans le chapitre (ex. CoT, ToT, GoT) est présent."
+      severity: recommande
+
+  Évaluation et optimisation:
+    - id: metriques_chiffrees
+      description: "Les critères d'évaluation ou d'optimisation proposés sont mesurables (métrique nommée, seuil ou méthode de mesure explicite)."
+      severity: recommande
+
+  Frontier techniques 2025-2026:
+    - id: situe_dans_le_temps
+      description: "Les techniques présentées sont explicitement situées dans la période 2025-2026 et distinguées des approches antérieures."
+      severity: recommande

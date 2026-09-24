@@ -1,0 +1,28 @@
+# Liste blanche : tout est ignoré, sauf le code, les prompts, le README
+# et les fichiers indispensables à l'installation et à l'exécution.
+/*
+
+# Documentation
+!/README.md
+
+# Code source, y compris l'interface web (static/) et les tests
+!/manual_cli/
+!/tests/
+
+# Prompts
+!/prompts/
+
+# Critères de validation lus à l'exécution (requirements/requirements.yml)
+!/requirements/
+
+# Packaging et configuration
+!/pyproject.toml
+!/params.example.yml
+!/.gitignore
+
+# Ré-ignorer les artefacts générés à l'intérieur des dossiers autorisés
+# (params.yml, ~/.env, output/, .venv/ restent exclus par la règle /* ci-dessus)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.DS_Store

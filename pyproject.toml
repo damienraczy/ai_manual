@@ -1,0 +1,46 @@
+[project]
+name = "ai-manual-cli"
+version = "0.1.0"
+description = "CLI de génération itérative du manuel de Prompt Engineering."
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "requests>=2.31",
+    "pydantic>=2.6",
+    "markdown>=3.6",
+    "mcp",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+web = [
+    "flask>=3.0",
+]
+
+[project.scripts]
+manual = "manual_cli.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["manual_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=manual_cli --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+source = ["manual_cli"]
+omit = ["manual_cli/__main__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]

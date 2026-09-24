@@ -1,0 +1,103 @@
+# Modèle de configuration : copier ce fichier en `params.yml` puis l'adapter.
+#
+#     cp params.example.yml params.yml
+#
+# Les secrets ne vont jamais ici : `url` et `api_key` sont des NOMS de variables
+# d'environnement, dont les valeurs sont lues dans `~/.env` :
+#
+#     OLLAMA_CLOUD_URL=https://...
+#     OLLAMA_API_KEY=...
+#     OPENAI_URL=https://api.openai.com/v1
+#     OPENAI_API_KEY=...          # uniquement pour `manual publish` (image de couverture)
+#
+# Le fichier est relu à chaque appel LLM : une modification (timeout, modèle)
+# prend effet immédiatement, sans redémarrer.
+
+### Catalogue de modèles disponibles
+# provider : `ollama` pour tous les rôles texte ; `openai` pour `model_image`.
+# timeout  : en secondes, par modèle (prioritaire sur llm_config.timeout).
+models:
+
+  deepseek-v4-pro:
+    provider: ollama
+    name: deepseek-v4-pro:cloud
+    url: OLLAMA_CLOUD_URL
+    api_key: OLLAMA_API_KEY
+    timeout: 120
+
+  deepseek-v4-flash:
+    provider: ollama
+    name: deepseek-v4-flash:cloud
+    url: OLLAMA_CLOUD_URL
+    api_key: OLLAMA_API_KEY
+    timeout: 120
+
+  mistral-large-3:
+    provider: ollama
+    name: mistral-large-3:675b-cloud
+    url: OLLAMA_CLOUD_URL
+    api_key: OLLAMA_API_KEY
+    timeout: 120
+
+  glm-5.3:
+    provider: ollama
+    name: glm-5.3:cloud
+    url: OLLAMA_CLOUD_URL
+    api_key: OLLAMA_API_KEY
+    timeout: 700
+
+  glm-5.3-flash:
+    provider: ollama
+    name: glm-5.3-flash:cloud
+    url: OLLAMA_CLOUD_URL
+    api_key: OLLAMA_API_KEY
+    timeout: 720
+
+  gemma4:
+    provider: ollama
+    name: gemma4:31b-cloud
+    url: OLLAMA_CLOUD_URL
+    api_key: OLLAMA_API_KEY
+    timeout: 120
+
+  gpt-image-1:
+    provider: openai
+    name: gpt-image-1
+    url: OPENAI_URL
+    api_key: OPENAI_API_KEY
+    timeout: 120
+
+### Affectation des rôles
+# Seul le bloc `llm_config` est lu. Les autres blocs (préfixés) sont des
+# préréglages inertes : pour en activer un, renommer le bloc en `llm_config`.
+#   model_write    : rédaction des sections (et de la table des matières)
+#   model_judge    : relecture / validation contre les critères
+#   model_think    : mise à jour de la mémoire (digest) inter-sections
+#   model_rewriter : réécriture après un rejet du juge
+#   model_image    : image de couverture (optionnel, `manual publish`)
+llm_config:
+  timeout: 120                       # valeur de repli si le modèle n'en définit pas
+  llm:
+    model_write: glm-5.3-flash
+    model_judge: glm-5.3-flash
+    model_think: glm-5.3-flash
+    model_rewriter: glm-5.3-flash
+    model_image: gpt-image-1
+
+# Préréglage rapide (exemple, inactif tant que non renommé en `llm_config`)
+FASTllm_config:
+  timeout: 120
+  llm:
+    model_write: gemma4
+    model_judge: gemma4
+    model_think: gemma4
+    model_rewriter: gemma4
+
+# Préréglage qualité (exemple, inactif tant que non renommé en `llm_config`)
+xllm_config:
+  timeout: 120
+  llm:
+    model_write: glm-5.3-flash
+    model_judge: deepseek-v4-pro
+    model_think: deepseek-v4-pro
+    model_rewriter: mistral-large-3

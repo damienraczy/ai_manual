@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traces LLM — ai_manual</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --row-error: #fef2f2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161a; --fg: #e8e8e8; --muted: #9aa1ac; --border: #2a2d33; --row-error: #3a1f1f; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    padding: 24px;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  h2 { font-size: 1rem; color: var(--muted); margin: 24px 0 8px; }
+  #summary { color: var(--muted); margin-bottom: 16px; }
+  #controls { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  select, button {
+    font: inherit;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+  }
+  button { cursor: pointer; }
+  #chart-section { border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+  svg#chart { width: 100%; height: 220px; display: block; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  tr.row-error { background: var(--row-error); }
+  #detail-panel {
+    position: fixed; top: 0; right: 0; width: min(480px, 100vw); height: 100vh;
+    background: var(--bg); border-left: 1px solid var(--border);
+    padding: 16px; overflow-y: auto; box-shadow: -4px 0 16px rgba(0,0,0,0.15);
+  }
+  #detail-panel.hidden { display: none; }
+  #detail-panel pre {
+    white-space: pre-wrap; word-break: break-word;
+    background: color-mix(in srgb, var(--fg) 5%, transparent);
+    padding: 8px; border-radius: 6px; font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Traces des appels LLM</h1>
+  <div id="summary">Chargement...</div>
+</header>
+
+<section id="controls">
+  <label>Rôle : <select id="role-filter"><option value="">(tous)</option></select></label>
+  <label>Statut :
+    <select id="status-filter">
+      <option value="">(tous)</option>
+      <option value="success">Succès</option>
+      <option value="error">Échec</option>
+    </select>
+  </label>
+  <button id="refresh" type="button">Rafraîchir</button>
+</section>
+
+<section id="chart-section">
+  <h2>Durée des appels dans le temps (survolez un point pour le détail)</h2>
+  <svg id="chart"></svg>
+</section>
+
+<section id="table-section">
+  <h2>Appels (cliquer une ligne pour voir l'entrée/sortie complète)</h2>
+  <table id="calls-table">
+    <thead>
+      <tr>
+        <th>#</th><th>Début</th><th>Rôle</th><th>Modèle</th><th>Tentative</th><th>Durée (s)</th><th>Statut</th><th>Erreur</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<div id="detail-panel" class="hidden">
+  <button id="close-detail" type="button">Fermer</button>
+  <h3>Détail de l'appel</h3>
+  <p><strong>Entrée</strong></p>
+  <pre id="detail-input"></pre>
+  <p><strong>Sortie / erreur</strong></p>
+  <pre id="detail-output"></pre>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var state = { calls: [] };
+
+  var ROLE_COLORS = {
+    model_write: "#2563eb",
+    model_judge: "#16a34a",
+    model_think: "#9333ea",
+    model_rewriter: "#d97706",
+    model_image: "#db2777"
+  };
+
+  function roleColor(role) {
+    return ROLE_COLORS[role] || "#6b7280";
+  }
+
+  function fmtDate(iso) {
+    try {
+      return new Date(iso).toLocaleString("fr-FR");
+    } catch (e) {
+      return iso || "";
+    }
+  }
+
+  function loadCalls() {
+    fetch("/api/calls")
+      .then(function (resp) { return resp.json(); })
+      .then(function (data) {
+        data.sort(function (a, b) {
+          return (a.started_at || "").localeCompare(b.started_at || "");
+        });
+        state.calls = data;
+        populateRoleFilter();
+        render();
+      });
+  }
+
+  function populateRoleFilter() {
+    var select = document.getElementById("role-filter");
+    var previous = select.value;
+    var roles = Array.from(new Set(state.calls.map(function (c) { return c.role; }))).sort();
+    select.innerHTML = "";
+    var optAll = document.createElement("option");
+    optAll.value = "";
+    optAll.textContent = "(tous)";
+    select.appendChild(optAll);
+    roles.forEach(function (role) {
+      var opt = document.createElement("option");
+      opt.value = role;
+      opt.textContent = role;
+      select.appendChild(opt);
+    });
+    select.value = previous;
+  }
+
+  function filteredCalls() {
+    var role = document.getElementById("role-filter").value;
+    var status = document.getElementById("status-filter").value;
+    return state.calls.filter(function (c) {
+      if (role && c.role !== role) return false;
+      if (status === "success" && !c.success) return false;
+      if (status === "error" && c.success) return false;
+      return true;
+    });
+  }
+
+  function renderSummary(calls) {
+    var summary = document.getElementById("summary");
+    var total = calls.length;
+    if (!total) {
+      summary.textContent = "Aucun appel journalisé pour l’instant.";
+      return;
+    }
+    var failures = calls.filter(function (c) { return !c.success; }).length;
+    var avg = calls.reduce(function (s, c) { return s + (c.duration_seconds || 0); }, 0) / total;
+    summary.textContent = total + " appel(s) — " + failures + " échec(s) — durée moyenne " + avg.toFixed(1) + " s";
+  }
+
+  function renderChart(calls) {
+    var svg = document.getElementById("chart");
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    if (calls.length === 0) return;
+
+    var width = svg.clientWidth || 800;
+    var height = 220;
+    var padding = 32;
+    var maxDuration = Math.max.apply(null, calls.map(function (c) { return c.duration_seconds || 0; }).concat([1]));
+    var stepX = calls.length > 1 ? (width - 2 * padding) / (calls.length - 1) : 0;
+
+    var svgNS = "http://www.w3.org/2000/svg";
+
+    calls.forEach(function (c, i) {
+      var x = padding + i * stepX;
+      var y = height - padding - ((c.duration_seconds || 0) / maxDuration) * (height - 2 * padding);
+      var circle = document.createElementNS(svgNS, "circle");
+      circle.setAttribute("cx", String(x));
+      circle.setAttribute("cy", String(y));
+      circle.setAttribute("r", c.success ? "4" : "6");
+      circle.setAttribute("fill", roleColor(c.role));
+      circle.setAttribute("opacity", c.success ? "0.85" : "1");
+      if (!c.success) {
+        circle.setAttribute("stroke", "#dc2626");
+        circle.setAttribute("stroke-width", "2");
+      }
+      var title = document.createElementNS(svgNS, "title");
+      title.textContent = c.role + " · " + c.model_key + " · tentative " + c.attempt + " · " +
+        (c.duration_seconds || 0).toFixed(1) + " s" + (c.success ? "" : " · ÉCHEC");
+      circle.appendChild(title);
+      svg.appendChild(circle);
+    });
+
+    var axisText = document.createElementNS(svgNS, "text");
+    axisText.setAttribute("x", "4");
+    axisText.setAttribute("y", "14");
+    axisText.setAttribute("font-size", "11");
+    axisText.setAttribute("fill", "currentColor");
+    axisText.textContent = "max " + maxDuration.toFixed(0) + " s";
+    svg.appendChild(axisText);
+  }
+
+  function renderTable(calls) {
+    var tbody = document.querySelector("#calls-table tbody");
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+    calls.forEach(function (c, i) {
+      var tr = document.createElement("tr");
+      tr.className = c.success ? "" : "row-error";
+
+      var cells = [
+        String(i + 1),
+        fmtDate(c.started_at),
+        c.role || "",
+        c.model_key || "",
+        String(c.attempt != null ? c.attempt : ""),
+        (c.duration_seconds || 0).toFixed(2),
+        c.success ? "OK" : "ÉCHEC",
+        c.error || ""
+      ];
+      cells.forEach(function (text) {
+        var td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      tr.addEventListener("click", function () { showDetail(c); });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function showDetail(call) {
+    var inputEl = document.getElementById("detail-input");
+    var outputEl = document.getElementById("detail-output");
+    inputEl.textContent = typeof call.input === "string" ? call.input : JSON.stringify(call.input, null, 2);
+    outputEl.textContent = call.output || call.error || "(vide)";
+    document.getElementById("detail-panel").classList.remove("hidden");
+  }
+
+  function render() {
+    var calls = filteredCalls();
+    renderSummary(calls);
+    renderChart(calls);
+    renderTable(calls);
+  }
+
+  document.getElementById("role-filter").addEventListener("change", render);
+  document.getElementById("status-filter").addEventListener("change", render);
+  document.getElementById("refresh").addEventListener("click", loadCalls);
+  document.getElementById("close-detail").addEventListener("click", function () {
+    document.getElementById("detail-panel").classList.add("hidden");
+  });
+  window.addEventListener("resize", render);
+
+  loadCalls();
+  setInterval(loadCalls, 5000);
+})();
+</script>
+</body>
+</html>
