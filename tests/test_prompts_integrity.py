@@ -82,3 +82,13 @@ def test_authoring_templates_use_exactly_their_placeholders():
     for name, placeholders in expected.items():
         template = Template((PROMPTS_DIR / name).read_text(encoding="utf-8"))
         assert set(template.get_identifiers()) == placeholders, name
+
+
+def test_improve_templates_use_exactly_their_placeholders():
+    template = Template((PROMPTS_DIR / "improve_instruction.md").read_text(encoding="utf-8"))
+    assert set(template.get_identifiers()) == {
+        "numero", "titre", "description", "sous_sections", "digest", "contenu_existant", "consigne",
+    }
+    default = Template((PROMPTS_DIR / "improve_default_instruction.md").read_text(encoding="utf-8"))
+    assert set(default.get_identifiers()) == set()
+    assert "Relis" in default.template

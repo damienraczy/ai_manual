@@ -2,7 +2,8 @@
 
 Sous-commandes : `init` (génère la table des matières), `write`
 (rédige les sections en attente ou une sélection via `-s`), `status`
-(affiche l'avancement), `redo` (régénère une section précise), `publish`
+(affiche l'avancement), `redo` (régénère une section précise), `improve`
+(améliore des sections déjà écrites, avec une consigne facultative), `publish`
 (prépare le paquet de publication LinkedIn d'un chapitre terminé),
 `traces` (interface web de visualisation des appels LLM journalisés) et
 `subject` (liste, crée, retouche, édite et contrôle les sujets de manuel,
@@ -24,7 +25,7 @@ from pathlib import Path
 
 from . import tracing
 from .config import ConfigError, load_config
-from .generator import GeneratorError, generate_toc, run_write
+from .generator import GeneratorError, generate_toc, run_improve, run_write
 from .parsing import ParsingError
 from .patterns import PatternError, parse_section_patterns
 from .providers import ProviderError
@@ -177,6 +178,48 @@ def cmd_redo(args: argparse.Namespace) -> int:
     for section in results:
         status = "OK" if section.status == "done" else "A REVOIR"
         print(f"[{status}] {section.numero}. {section.titre} (tentatives: {section.attempts})")
+    return 0
+
+
+def cmd_improve(args: argparse.Namespace) -> int:
+    """Améliore des sections déjà écrites, en s'en servant d'amorce pour une nouvelle génération.
+
+    Args:
+        args: Arguments parsés (`sections`, `instruction`, `instruction_file`,
+            `max_rewrite`, `worker`).
+
+    Returns:
+        Toujours `0` (une version non retenue est reportée dans la sortie).
+
+    Raises:
+        PatternError: Si un motif de section est invalide (capturée par `main`).
+        SubjectError: Si la consigne est donnée deux fois ou illisible (capturée par `main`).
+        GeneratorError: Si une section n'a pas encore de contenu (capturée par `main`).
+    """
+    only_numeros = parse_section_patterns(args.sections)
+    instruction = _text_argument(args.instruction, args.instruction_file, "consigne", "instruction-file")
+    cfg = load_config()
+    subject = _load_subject(args)
+    output_dir = _output_dir(args, subject)
+    tracing.configure(output_dir)
+    results = run_improve(
+        cfg,
+        output_dir,
+        subject,
+        only_numeros=only_numeros,
+        instruction=instruction,
+        max_rewrite=args.max_rewrite,
+        workers=args.worker,
+    )
+    for result in results:
+        section = result.section
+        if result.accepted:
+            print(f"[OK] {section.numero}. {section.titre} : améliorée (ancienne version : {result.backup})")
+        else:
+            print(
+                f"[NON RETENU] {section.numero}. {section.titre} : la nouvelle version n'a pas passé la relecture ; "
+                f"l'original est conservé, version candidate dans {result.path}"
+            )
     return 0
 
 
@@ -437,7 +480,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     Returns:
         Le parseur configuré avec toutes les sous-commandes
-        (`init`, `write`, `status`, `redo`, `publish`, `traces`, `subject`).
+        (`init`, `write`, `status`, `redo`, `improve`, `publish`, `traces`, `subject`).
     """
     parser = argparse.ArgumentParser(
         prog="manual", description="Génère un manuel de référence section par section, sur le sujet de votre choix."
@@ -481,6 +524,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_redo.add_argument("numero", type=int)
     p_redo.add_argument("--max-rewrite", type=int, default=2)
     p_redo.set_defaults(func=cmd_redo)
+
+    p_improve = sub.add_parser(
+        "improve",
+        help="Améliore des sections déjà écrites (le texte existant sert d'amorce, avec une consigne facultative).",
+    )
+    p_improve.add_argument("sections", nargs="+", metavar="N", help="Numéros et/ou intervalles de sections, ex: 3 5-8.")
+    p_improve.add_argument(
+        "-i", "--instruction", default=None, help='Consigne d\'amélioration (défaut : « relis et améliore »).'
+    )
+    p_improve.add_argument(
+        "-f",
+        "--instruction-file",
+        default=None,
+        metavar="FICHIER",
+        help="Lit la consigne dans un fichier texte UTF-8 ; `-` = entrée standard.",
+    )
+    p_improve.add_argument("--max-rewrite", type=int, default=2, help="Nombre max de réécritures après rejet du juge.")
+    p_improve.add_argument("-w", "--worker", type=int, default=4, help="Nombre de workers en parallèle (défaut : 4).")
+    p_improve.set_defaults(func=cmd_improve)
 
     p_publish = sub.add_parser(
         "publish", help="Prépare le paquet de publication LinkedIn d'un chapitre terminé (article, post, visuel)."

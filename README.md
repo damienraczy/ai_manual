@@ -124,6 +124,7 @@ manual --subject prompt-engineering status # 3. affiche l'avancement
 | `manual write --max-rewrite 3` | Autorise jusqu'à 3 cycles de réécriture après un rejet du juge (défaut : 2). |
 | `manual status` | Affiche l'état de chaque section (`done`, en attente, à revoir) et le total. |
 | `manual redo 7 [--max-rewrite N]` | Régénère la section 7 depuis zéro. |
+| `manual improve 7 [-i "consigne" \| -f FICHIER]` | Améliore la section 7 déjà écrite : son texte sert d'amorce à une nouvelle génération enrichie (voir [Améliorer des sections](#améliorer-des-sections-déjà-écrites)). |
 | `manual publish 1 [--no-image]` | Prépare le paquet de publication LinkedIn de la section 1 (voir plus bas). |
 | `manual traces [--host H] [--port P]` | Lance l'interface web (défaut : `127.0.0.1:8787`) sur le journal des appels LLM. |
 | `manual subject list` | Liste les sujets disponibles (un sujet incomplet est signalé `INVALIDE`). |
@@ -139,8 +140,26 @@ Flux de travail habituel :
 2. `manual init`, puis relire `output/<sujet>/00_toc.md` ; relancer `manual init --force` tant que le plan ne convient pas.
 3. Facultatif : `manual subject criteria` pour ajouter des critères de relecture par partie.
 4. `manual write` ; en cas d'interruption, relancer la même commande : les sections terminées sont conservées.
-5. `manual status` pour repérer les sections « à revoir », puis `manual redo N` pour celles qui ne conviennent pas.
+5. `manual status` pour repérer les sections « à revoir », puis `manual redo N` (refaire de zéro) ou `manual improve N` (améliorer l'existant) pour celles qui ne conviennent pas.
 6. Facultatif : `manual publish N` pour préparer une publication LinkedIn.
+
+### Améliorer des sections déjà écrites
+
+`manual improve` reprend le texte d'une section et l'utilise comme **amorce** d'une nouvelle génération, sur le même principe que l'écriture normale (rédaction, relecture par le juge, réécriture si besoin, mise à jour de la mémoire), mais avec un contenu enrichi.
+
+```bash
+manual improve 7                                    # consigne par défaut : « relis et améliore »
+manual improve 7 -i "plus d'exemples chiffrés, intro plus courte"
+manual improve 3 5-8 -f consigne.txt                # plusieurs sections, consigne dans un fichier
+```
+
+- **Sans consigne**, le modèle relit et améliore : corrections, manques comblés, exemples enrichis, plan inchangé. La consigne par défaut se règle dans `prompts/improve_default_instruction.md`.
+- **Le titre et les sous-sections du plan sont conservés** ; la mémoire du manuel est fournie au modèle pour rester cohérent avec les autres chapitres.
+- **Rien n'est perdu** : la nouvelle version ne remplace l'ancienne que si elle passe la relecture. L'ancienne est alors gardée en `NN_titre.md.bak`. Sinon, l'original, son statut et la mémoire restent intacts, et la version refusée est écrite à côté dans `NN_titre.candidate.md` pour que vous puissiez la lire.
+- Une section « à revoir » qui a du contenu peut aussi être améliorée ; une section sans contenu doit d'abord passer par `manual write`.
+- Options : `--max-rewrite N` et `-w N`, comme pour `write`.
+
+Différence avec `redo` : `redo` repart de zéro sans relire l'existant ; `improve` part de l'existant.
 
 ### Suivi des appels LLM
 
@@ -153,7 +172,7 @@ Dans le répertoire de sortie (`output/<sujet>/` par défaut) :
 | Fichier | Contenu |
 |---|---|
 | `00_toc.md` | La table des matières générée |
-| `NN_titre-du-chapitre.md` | Un fichier Markdown par chapitre |
+| `NN_titre-du-chapitre.md` | Un fichier Markdown par chapitre (`.md.bak` : version précédente après `improve` ; `.candidate.md` : version refusée par la relecture) |
 | `manifest.json` | L'état de chaque section (statut, nombre de tentatives) et le sujet utilisé |
 | `memory.md` | Le résumé cumulé transmis aux rédactions suivantes |
 | `traces/calls.jsonl` | Le journal de tous les appels LLM |

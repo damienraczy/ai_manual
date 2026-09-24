@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 
@@ -917,3 +918,102 @@ def test_subject_refine_refuses_inline_instruction_and_file_together(tmp_path, m
 
     assert rc == 1
     assert "pas les deux" in capsys.readouterr().err
+
+
+# --- improve ---------------------------------------------------------------------
+
+
+def make_improve_result(accepted=True, tmp=None):
+    from manual_cli.generator import ImproveResult
+
+    section = make_manual_state().sections[0]
+    base = (tmp or Path("/x")) / section.filename
+    if accepted:
+        return ImproveResult(section=section, accepted=True, path=base, backup=Path(str(base) + ".bak"))
+    return ImproveResult(section=section, accepted=False, path=base.with_name("01_un.candidate.md"), backup=None)
+
+
+def capture_improve(monkeypatch, results):
+    received = {}
+
+    def fake_run_improve(cfg, out, subject, only_numeros, instruction, max_rewrite, workers):
+        received.update(
+            slug=subject.slug, out=out, only_numeros=only_numeros, instruction=instruction,
+            max_rewrite=max_rewrite, workers=workers,
+        )
+        return results
+
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    monkeypatch.setattr(cli, "run_improve", fake_run_improve)
+    return received
+
+
+def test_improve_selects_sections_with_defaults(tmp_path, monkeypatch, capsys):
+    received = capture_improve(monkeypatch, [make_improve_result(tmp=tmp_path)])
+
+    rc = cli.main(["--output", str(tmp_path), "improve", "1", "3-4"])
+
+    assert rc == 0
+    assert received == {
+        "slug": "test-sujet", "out": tmp_path, "only_numeros": [1, 3, 4],
+        "instruction": None, "max_rewrite": 2, "workers": 4,
+    }
+    out = capsys.readouterr().out
+    assert "[OK]" in out and ".bak" in out
+    assert tracing.is_configured() is True
+
+
+def test_improve_forwards_inline_instruction_and_options(tmp_path, monkeypatch):
+    received = capture_improve(monkeypatch, [])
+
+    cli.main(["--output", str(tmp_path), "improve", "2", "-i", "Plus d'exemples chiffrés", "--max-rewrite", "3", "-w", "2"])
+
+    assert received["instruction"] == "Plus d'exemples chiffrés"
+    assert received["max_rewrite"] == 3
+    assert received["workers"] == 2
+
+
+def test_improve_reads_the_instruction_from_a_file(tmp_path, monkeypatch):
+    received = capture_improve(monkeypatch, [])
+    instruction_file = tmp_path / "consigne.txt"
+    instruction_file.write_text(LONG_BRIEF, encoding="utf-8")
+
+    cli.main(["--output", str(tmp_path), "improve", "1", "-f", str(instruction_file)])
+
+    assert received["instruction"] == LONG_BRIEF
+
+
+def test_improve_refuses_inline_instruction_and_file_together(tmp_path, monkeypatch, capsys):
+    capture_improve(monkeypatch, [])
+    f = tmp_path / "c.txt"
+    f.write_text("x", encoding="utf-8")
+
+    rc = cli.main(["--output", str(tmp_path), "improve", "1", "-i", "a", "-f", str(f)])
+
+    assert rc == 1
+    assert "pas les deux" in capsys.readouterr().err
+
+
+def test_improve_reports_a_version_that_was_not_retained(tmp_path, monkeypatch, capsys):
+    capture_improve(monkeypatch, [make_improve_result(accepted=False, tmp=tmp_path)])
+
+    rc = cli.main(["--output", str(tmp_path), "improve", "1"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "NON RETENU" in out
+    assert "candidate" in out and "conservé" in out
+
+
+def test_improve_reports_an_invalid_section_pattern(tmp_path, monkeypatch, capsys):
+    capture_improve(monkeypatch, [])
+
+    rc = cli.main(["--output", str(tmp_path), "improve", "abc"])
+
+    assert rc == 1
+    assert "Erreur" in capsys.readouterr().err
+
+
+def test_improve_requires_at_least_one_section():
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["improve"])
