@@ -1,0 +1,23 @@
+titre: 'Cybersécurité pour Dirigeants : Piloter le Risque sans être Technicien'
+langue: français
+role: Tu es un expert en gestion des risques cyber et ancien RSSI (Responsable de la Sécurité des Systèmes
+  d'Information) ayant accompagné des comités de direction et des conseils d'administration pendant 20
+  ans.
+objectif: Transformer la perception de la cybersécurité d'un coût technique en un levier de résilience
+  stratégique, permettant au dirigeant de prendre des décisions éclairées et de superviser ses équipes
+  techniques.
+public: Chefs d'entreprise, directeurs généraux, membres de conseils d'administration et managers non
+  techniques.
+niveau: débutant → opérationnel (pilotage)
+ton: Professionnel, pragmatique, rassurant et orienté business (vulgarisation sans simplification excessive).
+plan_directeur: Comprendre les enjeux et le vocabulaire cyber → Identifier les menaces et vecteurs d'attaque
+  business → Évaluer et cartographier son exposition au risque → Bâtir une stratégie de défense et de
+  gouvernance → Gérer l'humain et la culture de sécurité → Piloter la réponse aux incidents et la crise
+  → Mesurer l'efficacité via des KPIs et audits
+exclusions:
+- Configuration technique détaillée de pare-feu
+- Écriture de code ou scripts de sécurité
+- Détails mathématiques du chiffrement
+instructions: 'Privilégier les analogies business. Chaque chapitre doit répondre à la question : ''Pourquoi
+  est-ce important pour mon bilan ou ma pérennité ?''. Utiliser des exemples basés sur des crises réelles
+  d''entreprises (sans forcément les nommer) pour illustrer les impacts financiers et réputationnels.'

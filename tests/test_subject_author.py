@@ -86,6 +86,15 @@ def test_generate_subject_sends_brief_and_shared_criteria_to_the_model(tmp_path,
     assert "$" not in messages[1]["content"]
 
 
+def test_generate_subject_passes_a_long_multiline_brief_verbatim(tmp_path, fake):
+    brief = "Manuel de cybersécurité.\n\nPublic : COMEX.\n- point 1\n- point 2"
+    client = fake(as_json(SPEC))
+
+    subject_author.generate_subject(object(), "cyber", brief, tmp_path)
+
+    assert brief in client.calls[0][1]["content"]
+
+
 def test_generate_subject_without_criteria_keeps_a_documented_requirements_file(tmp_path, fake):
     fake(as_json(SPEC))
 
@@ -217,6 +226,16 @@ def test_refine_subject_sends_current_content_and_instruction(tmp_path, fake):
     assert "ajoute un chapitre sur le juridique" in content
     assert "Tu es un RSSI expérimenté" in content
     assert "$" not in content
+
+
+def test_refine_subject_passes_a_long_multiline_instruction_verbatim(tmp_path, fake):
+    write_subject(tmp_path)
+    instruction = "Change le ton.\n\n- plus court\n- plus concret"
+    client = fake(as_json(SPEC))
+
+    subject_author.refine_subject(object(), "cyber", instruction, tmp_path)
+
+    assert instruction in client.calls[0][1]["content"]
 
 
 def test_refine_subject_without_change_leaves_files_untouched(tmp_path, fake):

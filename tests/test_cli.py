@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+
 import pytest
 
 from manual_cli import cli, tracing
@@ -806,3 +808,112 @@ def test_subject_edit_reports_a_missing_editor_program(monkeypatch, capsys):
 
     assert rc == 1
     assert "introuvable" in capsys.readouterr().err
+
+
+# --- descriptif / consigne lus dans un fichier -------------------------------------
+
+
+LONG_BRIEF = "Manuel de cybersécurité.\n\nPublic : COMEX.\nInsister sur les cas réels d'incidents.\n"
+
+
+def capture_generate(monkeypatch):
+    received = {}
+
+    def fake_generate(cfg, slug, brief, dir_):
+        received["brief"] = brief
+        return dir_ / slug
+
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+    monkeypatch.setattr(cli, "generate_subject", fake_generate)
+    return received
+
+
+@pytest.mark.parametrize("flag", ["--brief-file", "-f"])
+def test_subject_new_reads_a_long_brief_from_a_file(tmp_path, monkeypatch, flag):
+    received = capture_generate(monkeypatch)
+    brief_file = tmp_path / "brief.txt"
+    brief_file.write_text(LONG_BRIEF, encoding="utf-8")
+
+    rc = cli.main(["subject", "new", "cyber", flag, str(brief_file)])
+
+    assert rc == 0
+    assert received["brief"] == LONG_BRIEF
+
+
+def test_subject_new_reads_the_brief_from_stdin_with_a_dash(monkeypatch):
+    received = capture_generate(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO(LONG_BRIEF))
+
+    rc = cli.main(["subject", "new", "cyber", "-f", "-"])
+
+    assert rc == 0
+    assert received["brief"] == LONG_BRIEF
+
+
+def test_subject_new_refuses_inline_brief_and_file_together(tmp_path, monkeypatch, capsys):
+    capture_generate(monkeypatch)
+    brief_file = tmp_path / "brief.txt"
+    brief_file.write_text("x", encoding="utf-8")
+
+    rc = cli.main(["subject", "new", "cyber", "brief en ligne", "-f", str(brief_file)])
+
+    assert rc == 1
+    assert "pas les deux" in capsys.readouterr().err
+
+
+def test_subject_new_reports_an_unreadable_brief_file(tmp_path, monkeypatch, capsys):
+    capture_generate(monkeypatch)
+
+    rc = cli.main(["subject", "new", "cyber", "-f", str(tmp_path / "absent.txt")])
+
+    assert rc == 1
+    assert "absent.txt" in capsys.readouterr().err
+
+
+def test_subject_new_reports_a_brief_file_that_is_not_utf8(tmp_path, monkeypatch, capsys):
+    capture_generate(monkeypatch)
+    brief_file = tmp_path / "brief.txt"
+    brief_file.write_bytes(b"caf\xe9")
+
+    rc = cli.main(["subject", "new", "cyber", "-f", str(brief_file)])
+
+    assert rc == 1
+    assert "brief.txt" in capsys.readouterr().err
+
+
+def test_subject_refine_reads_a_long_instruction_from_a_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+    received = {}
+
+    def fake_refine(cfg, slug, instruction, dir_):
+        received["instruction"] = instruction
+        return []
+
+    monkeypatch.setattr(cli, "refine_subject", fake_refine)
+    instruction_file = tmp_path / "consigne.txt"
+    instruction_file.write_text(LONG_BRIEF, encoding="utf-8")
+
+    rc = cli.main(["subject", "refine", "test-sujet", "-f", str(instruction_file)])
+
+    assert rc == 0
+    assert received["instruction"] == LONG_BRIEF
+
+
+def test_subject_refine_requires_an_instruction(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+
+    rc = cli.main(["subject", "refine", "test-sujet"])
+
+    assert rc == 1
+    assert "consigne" in capsys.readouterr().err
+
+
+def test_subject_refine_refuses_inline_instruction_and_file_together(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+    f = tmp_path / "c.txt"
+    f.write_text("x", encoding="utf-8")
+
+    rc = cli.main(["subject", "refine", "test-sujet", "en ligne", "-f", str(f)])
+
+    assert rc == 1
+    assert "pas les deux" in capsys.readouterr().err

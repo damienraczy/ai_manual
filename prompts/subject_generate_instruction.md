@@ -1,8 +1,10 @@
 # Tâche : cadrer un nouveau manuel à partir d'un court descriptif
 
-Voici le descriptif fourni par l'auteur :
+Voici le descriptif fourni par l'auteur (il peut être long et détaillé : exploite toutes ses précisions — public, périmètre, contraintes, exemples, exclusions) :
 
-> $brief
+<descriptif>
+$brief
+</descriptif>
 
 Propose le cadrage complet du manuel : tous les champs ci-dessous doivent être renseignés, sauf `exclusions` et `instructions` qui peuvent rester vides (`[]` et `""`).
 

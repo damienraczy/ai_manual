@@ -1,0 +1,17 @@
+generic:
+- id: vulgarisation_strategique
+  description: 'Chaque terme technique est traduit en impact business (ex: ''injection SQL'' devient ''vol
+    de base de données clients'').'
+  severity: bloquant
+- id: actionnabilite_dirigeant
+  description: Chaque section propose au moins une question précise que le dirigeant doit poser à son
+    DSI ou prestataire pour vérifier la conformité.
+  severity: bloquant
+- id: approche_risque
+  description: La notion de 'risque zéro' est systématiquement déconstruite au profit de la notion de
+    'résilience' et de 'gestion du risque acceptable'.
+  severity: recommande
+- id: indicateurs_pilotage
+  description: Le contenu suggère des indicateurs de performance (KPI) simples et non techniques pour
+    suivre la santé cyber de l'organisation.
+  severity: recommande

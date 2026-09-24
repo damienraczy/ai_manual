@@ -252,20 +252,50 @@ def cmd_subject_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _text_argument(inline: str | None, file: str | None, what: str, flag: str) -> str | None:
+    """Lit un texte long donné soit en argument, soit dans un fichier (`-` = entrée standard).
+
+    Args:
+        inline: Texte passé directement sur la ligne de commande, ou `None`.
+        file: Chemin d'un fichier texte UTF-8 (ou `-` pour l'entrée standard), ou `None`.
+        what: Nom de l'élément pour les messages d'erreur (ex. « descriptif »).
+        flag: Nom de l'option fichier correspondante (ex. `brief-file`).
+
+    Returns:
+        Le texte, ou `None` si ni `inline` ni `file` n'est fourni.
+
+    Raises:
+        SubjectError: Si les deux sont fournis, ou si le fichier est illisible
+            ou n'est pas de l'UTF-8.
+    """
+    if inline is not None and file is not None:
+        raise SubjectError(f"Donne le {what} soit en argument, soit avec --{flag}, pas les deux.")
+    if file is None:
+        return inline
+    if file == "-":
+        return sys.stdin.read()
+    try:
+        return Path(file).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise SubjectError(f"Lecture impossible de {file} : {exc}") from exc
+
+
 def cmd_subject_new(args: argparse.Namespace) -> int:
     """Crée un nouveau sujet : squelette à remplir, ou rédigé par le LLM depuis un descriptif.
 
     Args:
-        args: Arguments parsés (`slug`, `brief`).
+        args: Arguments parsés (`slug`, `brief`, `brief_file`).
 
     Returns:
         `0` en cas de succès.
 
     Raises:
-        SubjectError: Si l'identifiant est invalide ou déjà pris (capturée par `main`).
+        SubjectError: Si l'identifiant est invalide ou déjà pris, ou si le
+            descriptif est donné deux fois ou illisible (capturée par `main`).
     """
-    if args.brief:
-        directory = generate_subject(load_config(), args.slug, args.brief, SUBJECTS_DIR)
+    brief = _text_argument(args.brief, args.brief_file, "descriptif", "brief-file")
+    if brief is not None:
+        directory = generate_subject(load_config(), args.slug, brief, SUBJECTS_DIR)
         print(f"Sujet créé et rédigé par le modèle : {directory}")
         print(f"  - Relis-le : manual subject check {args.slug} --show")
         print(f'  - Retouche-le : manual subject refine {args.slug} "ta consigne"  (ou manual subject edit {args.slug})')
@@ -283,15 +313,19 @@ def cmd_subject_refine(args: argparse.Namespace) -> int:
     """Retouche un sujet existant selon une consigne en langage naturel.
 
     Args:
-        args: Arguments parsés (`slug`, `instruction`).
+        args: Arguments parsés (`slug`, `instruction`, `instruction_file`).
 
     Returns:
         `0` en cas de succès (y compris si le modèle n'a rien changé).
 
     Raises:
-        SubjectError: Si le sujet est introuvable ou invalide (capturée par `main`).
+        SubjectError: Si le sujet est introuvable ou invalide, ou si la
+            consigne est absente, donnée deux fois ou illisible (capturée par `main`).
     """
-    changed = refine_subject(load_config(), args.slug, args.instruction, SUBJECTS_DIR)
+    instruction = _text_argument(args.instruction, args.instruction_file, "consigne", "instruction-file")
+    if instruction is None:
+        raise SubjectError("Donne la consigne en argument ou avec --instruction-file (`-f`).")
+    changed = refine_subject(load_config(), args.slug, instruction, SUBJECTS_DIR)
     if not changed:
         print("Aucun changement : le modèle a jugé que le sujet répondait déjà à la consigne.")
         return 0
@@ -475,11 +509,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_subject_new.add_argument(
         "brief", nargs="?", default=None, help="Descriptif libre du manuel voulu : le LLM rédige alors le sujet."
     )
+    p_subject_new.add_argument(
+        "-f",
+        "--brief-file",
+        default=None,
+        metavar="FICHIER",
+        help="Lit le descriptif (aussi long que nécessaire) dans un fichier texte UTF-8 ; `-` = entrée standard.",
+    )
     p_subject_new.set_defaults(func=cmd_subject_new)
 
     p_subject_refine = subject_sub.add_parser("refine", help="Retouche un sujet selon une consigne (LLM).")
     p_subject_refine.add_argument("slug", help="Sujet à retoucher.")
-    p_subject_refine.add_argument("instruction", help='Consigne libre, ex. « ton plus décontracté, sans juridique ».')
+    p_subject_refine.add_argument(
+        "instruction", nargs="?", default=None, help='Consigne libre, ex. « ton plus décontracté, sans juridique ».'
+    )
+    p_subject_refine.add_argument(
+        "-f",
+        "--instruction-file",
+        default=None,
+        metavar="FICHIER",
+        help="Lit la consigne (aussi longue que nécessaire) dans un fichier texte UTF-8 ; `-` = entrée standard.",
+    )
     p_subject_refine.set_defaults(func=cmd_subject_refine)
 
     p_subject_criteria = subject_sub.add_parser(

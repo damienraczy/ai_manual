@@ -127,8 +127,8 @@ manual --subject prompt-engineering status # 3. affiche l'avancement
 | `manual publish 1 [--no-image]` | Prépare le paquet de publication LinkedIn de la section 1 (voir plus bas). |
 | `manual traces [--host H] [--port P]` | Lance l'interface web (défaut : `127.0.0.1:8787`) sur le journal des appels LLM. |
 | `manual subject list` | Liste les sujets disponibles (un sujet incomplet est signalé `INVALIDE`). |
-| `manual subject new SLUG ["descriptif"]` | Crée un sujet : rédigé par le modèle si un descriptif est donné, sinon squelette à remplir. |
-| `manual subject refine SLUG "consigne"` | Retouche un sujet selon une consigne en langage naturel. |
+| `manual subject new SLUG ["descriptif" \| -f FICHIER]` | Crée un sujet : rédigé par le modèle si un descriptif est donné (en ligne ou dans un fichier), sinon squelette à remplir. |
+| `manual subject refine SLUG ["consigne" \| -f FICHIER]` | Retouche un sujet selon une consigne en langage naturel. |
 | `manual subject edit [SLUG]` | Ouvre `subject.yml` dans l'éditeur puis le valide. |
 | `manual subject criteria [SLUG] [--force]` | Propose des critères de relecture par partie de la table des matières générée. |
 | `manual subject check [SLUG] [--show]` | Valide un sujet ; `--show` affiche les prompts tels qu'ils seront envoyés. |
@@ -174,6 +174,24 @@ manual --subject cybersecurite-dirigeants init         # générer la table des 
 manual --subject cybersecurite-dirigeants write
 ```
 
+Pour un descriptif plus long, le mettre dans un fichier texte (UTF-8) et le passer avec `-f` / `--brief-file` (`-` lit l'entrée standard) :
+
+```bash
+manual subject new cybersecurite-dirigeants -f descriptif.txt
+```
+
+Plus le descriptif est précis, meilleur est le cadrage. Exemple de contenu de `descriptif.txt` :
+
+```text
+Manuel de cybersécurité destiné aux dirigeants non techniques de PME.
+Public : dirigeants et directeurs généraux, sans formation informatique.
+Objectif : leur permettre de décider, arbitrer et piloter, pas de configurer.
+À couvrir : panorama des menaces, gouvernance et responsabilités, budget,
+assurance cyber, gestion de crise et communication.
+À exclure : configuration technique, cryptographie détaillée.
+Ton : direct, sans jargon ; chaque chapitre s'appuie sur un incident réel.
+```
+
 Le modèle (`model_write`) propose tous les champs de `subject.yml` et quelques critères de relecture propres au sujet. Rien n'est écrit tant que sa réponse n'est pas valide.
 
 **À la main** : sans descriptif, `manual subject new <identifiant>` crée un squelette dont les champs valent « À COMPLÉTER » (refusés tant qu'ils restent tels quels), à remplir avec `manual subject edit <identifiant>`.
@@ -182,7 +200,7 @@ Le modèle (`model_write`) propose tous les champs de `subject.yml` et quelques 
 
 | Commande | Effet |
 |---|---|
-| `manual subject refine SLUG "consigne"` | Le modèle applique la consigne (ex. « ton plus décontracté, sans juridique ») et affiche les champs modifiés. L'ancienne version est conservée dans `subject.yml.bak`. |
+| `manual subject refine SLUG "consigne"` ou `refine SLUG -f consigne.txt` | Le modèle applique la consigne (ex. « ton plus décontracté, sans juridique »), donnée en ligne ou dans un fichier texte, et affiche les champs modifiés. L'ancienne version est conservée dans `subject.yml.bak`. |
 | `manual subject edit [SLUG]` | Ouvre `subject.yml` dans `$VISUAL` / `$EDITOR`, puis le valide à la fermeture. |
 | `manual subject check [SLUG] [--show]` | Valide le sujet ; `--show` affiche les prompts tels qu'ils seront envoyés. |
 
