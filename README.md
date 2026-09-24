@@ -14,6 +14,7 @@
 - [Publication LinkedIn (optionnelle)](#publication-linkedin-optionnelle)
 - [Tests](#tests)
 - [Structure du dépôt](#structure-du-dépôt)
+- [Remerciements](#remerciements)
 - [Licence et propriété](#licence-et-propriété)
 
 ## Ce que fait le programme
@@ -190,6 +191,12 @@ tests/                 suite de tests
 params.example.yml     modèle de configuration à copier en params.yml
 pyproject.toml         packaging et configuration des tests
 ```
+
+## Remerciements
+
+- **[OpenCode](https://opencode.ai)** : a servi à prototyper l'outil.
+- **[Ollama](https://ollama.com)** : fournit les modèles de langage utilisés pour tous les rôles texte.
+- **[Gemini](https://gemini.google.com)** (Google) : a servi à restructurer le prompt d'origine, dont sont issus tous les autres prompts.
 
 ## Licence et propriété
 
