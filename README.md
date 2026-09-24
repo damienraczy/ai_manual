@@ -2,7 +2,7 @@
 
 <img src="assets/social-preview.jpg" alt="ai_manual : un robot présente « The Basics of Prompt Engineering » sur un tableau" width="800">
 
-`ai_manual` est un outil en ligne de commande (`manual`) qui **rédige de bout en bout un manuel de référence complet** en orchestrant plusieurs appels à des modèles de langage (LLM). La version fournie produit un manuel de *Prompt Engineering* en français, du niveau débutant au niveau expert. Changer le sujet consiste à modifier les prompts.
+`ai_manual` est un outil en ligne de commande (`manual`) qui **rédige de bout en bout un manuel de référence complet** en orchestrant plusieurs appels à des modèles de langage (LLM). Il fonctionne **sujet par sujet** : le dépôt fournit un sujet complet (un manuel de *Prompt Engineering* en français, du niveau débutant au niveau expert), et un nouveau sujet se crée en une commande à partir d'un court descriptif, rédigé par le modèle puis retouchable à volonté.
 
 ## Sommaire
 
@@ -21,11 +21,12 @@
 
 ## Ce que fait le programme
 
-1. **Plan.** Un premier LLM propose une table des matières complète (parties, chapitres, sous-sections), enregistrée dans `00_toc.md` et dans un fichier d'état `manifest.json`.
-2. **Rédaction.** Chaque chapitre est écrit un par un, en suivant strictement le plan. Plusieurs chapitres peuvent être rédigés en parallèle.
-3. **Relecture automatique.** Un second LLM (le « juge ») évalue chaque chapitre selon des critères de qualité communs (`requirements/requirements.yml`) et propres au sujet (définitions claires, exemples concrets, avantages et limites, cohérence avec le plan, etc.). Si un critère bloquant n'est pas rempli, un troisième rôle (le « réécrivain ») corrige le chapitre, qui est rejugé, dans la limite de `--max-rewrite` cycles.
-4. **Mémoire.** Après chaque chapitre accepté, un résumé cumulé de ce qui a déjà été couvert (`memory.md`) est transmis aux rédactions suivantes, pour éviter les contradictions et les redites.
-5. **Reprise.** L'avancement est sauvegardé chapitre par chapitre : on peut interrompre, relancer, cibler certains chapitres ou en refaire un seul sans tout recommencer.
+1. **Cadrage du sujet.** Un sujet décrit de quoi parle le manuel : rôle de l'auteur, public, niveau, ton, progression, exclusions, critères propres. Il peut être rédigé par le LLM à partir d'un descriptif, puis retouché (voir [Sujets](#sujets--écrire-sur-un-autre-thème)).
+2. **Plan.** Un LLM propose une table des matières complète (parties, chapitres, sous-sections), enregistrée dans `00_toc.md` et dans un fichier d'état `manifest.json`.
+3. **Rédaction.** Chaque chapitre est écrit un par un, en suivant strictement le plan. Plusieurs chapitres peuvent être rédigés en parallèle.
+4. **Relecture automatique.** Un second LLM (le « juge ») évalue chaque chapitre selon des critères de qualité communs (`requirements/requirements.yml`) et propres au sujet (définitions claires, exemples concrets, avantages et limites, cohérence avec le plan, etc.). Si un critère bloquant n'est pas rempli, un troisième rôle (le « réécrivain ») corrige le chapitre, qui est rejugé, dans la limite de `--max-rewrite` cycles.
+5. **Mémoire.** Après chaque chapitre accepté, un résumé cumulé de ce qui a déjà été couvert (`memory.md`) est transmis aux rédactions suivantes, pour éviter les contradictions et les redites.
+6. **Reprise.** L'avancement est sauvegardé chapitre par chapitre : on peut interrompre, relancer, cibler certains chapitres ou en refaire un seul sans tout recommencer.
 
 Un chapitre n'est marqué `done` que si le juge l'accepte **et** que son marqueur de fin est présent dans le texte.
 
@@ -34,7 +35,7 @@ Un chapitre n'est marqué `done` que si le juge l'accepte **et** que son marqueu
 ## Prérequis
 
 - Python **3.10 ou plus récent**
-- Un accès à un service **Ollama Cloud** (URL et clé API) pour tous les rôles texte
+- Un accès à un service **Ollama Cloud** (URL et clé API) pour tous les rôles texte (rédaction des chapitres, relecture, rédaction des sujets)
 - *Optionnel* : une clé **OpenAI** pour générer des images de couverture (`manual publish`)
 
 ## Installation
@@ -91,7 +92,7 @@ cp params.example.yml params.yml
 
 | Rôle | Fonction | Fournisseur autorisé |
 |---|---|---|
-| `model_write` | rédige la table des matières et les chapitres | `ollama` |
+| `model_write` | rédige les sujets, la table des matières et les chapitres | `ollama` |
 | `model_judge` | relit et valide chaque chapitre | `ollama` |
 | `model_think` | met à jour la mémoire inter-chapitres | `ollama` |
 | `model_rewriter` | réécrit un chapitre rejeté | `ollama` |
@@ -105,7 +106,7 @@ Seul le bloc nommé exactement `llm_config` est lu. Les autres blocs (`FASTllm_c
 
 Deux options se placent avant la sous-commande :
 
-- `--subject SUJET` choisit le sujet du manuel (un dossier de `subjects/`, voir [Sujets](#sujets--écrire-sur-un-autre-thème)). Facultatif tant qu'il n'existe qu'un seul sujet.
+- `--subject SUJET` choisit le sujet du manuel (un dossier de `subjects/`, voir [Sujets](#sujets--écrire-sur-un-autre-thème)). Facultatif tant qu'il n'existe qu'un seul sujet ; **dès qu'il y en a plusieurs, il devient obligatoire** pour `init`, `write`, `redo`, `status`, `publish` et `traces` (sauf si `--output` est donné pour `status`, `publish` et `traces`).
 - `--output DIR` choisit le répertoire de sortie (défaut : `output/<sujet>/` dans le dépôt).
 
 ```bash
@@ -134,9 +135,12 @@ manual --subject prompt-engineering status # 3. affiche l'avancement
 
 Flux de travail habituel :
 
-1. `manual init`, puis relire `output/<sujet>/00_toc.md` ; relancer `manual init --force` tant que le plan ne convient pas.
-2. `manual write` ; en cas d'interruption, relancer la même commande : les sections terminées sont conservées.
-3. `manual status` pour repérer les sections « à revoir », puis `manual redo N` pour celles qui ne conviennent pas.
+1. Choisir ou créer le sujet : `manual subject list`, ou `manual subject new SLUG "descriptif"` puis `manual subject check SLUG --show`.
+2. `manual init`, puis relire `output/<sujet>/00_toc.md` ; relancer `manual init --force` tant que le plan ne convient pas.
+3. Facultatif : `manual subject criteria` pour ajouter des critères de relecture par partie.
+4. `manual write` ; en cas d'interruption, relancer la même commande : les sections terminées sont conservées.
+5. `manual status` pour repérer les sections « à revoir », puis `manual redo N` pour celles qui ne conviennent pas.
+6. Facultatif : `manual publish N` pour préparer une publication LinkedIn.
 
 ### Suivi des appels LLM
 
@@ -235,7 +239,7 @@ Les autres prompts (`section_instruction.md`, `judge_instruction.md`, `rewrite_i
 
 ```bash
 pip install -e ".[test,web]"
-python -m pytest                 # suite complète, seuil de couverture : 90 %
+python -m pytest                 # suite complète, seuil de couverture : 90 %, LLM simulés (aucun appel réseau)
 python -m pytest -k nom_du_test -q --no-cov
 ```
 
@@ -244,8 +248,8 @@ Le projet suit un développement piloté par les tests (RED → GREEN → REFACT
 ## Structure du dépôt
 
 ```
-manual_cli/            code source (CLI, génération, fournisseurs, traces, interface web)
-prompts/               gabarits de prompts communs à tous les sujets
+manual_cli/            code source (CLI, sujets, génération, fournisseurs, traces, interface web)
+prompts/               gabarits de prompts communs à tous les sujets (dont ceux de la rédaction assistée)
 subjects/              un dossier par sujet de manuel (subject.yml, critères propres)
 assets/                image de prévisualisation sociale (1280x640)
 requirements/          critères de qualité communs utilisés par le juge
