@@ -4,7 +4,7 @@
 
 # Documentation
 !/README.md
-!/LICENCE
+!/LICENSE
 
 # Code source, y compris l'interface web (static/) et les tests
 !/manual_cli/

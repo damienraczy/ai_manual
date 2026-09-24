@@ -202,6 +202,6 @@ Ce logiciel est la propriété de son auteur. Vous pouvez l'utiliser, le copier 
 
 Toute autre utilisation nécessite l'accord écrit préalable de l'auteur.
 
-Ces conditions correspondent à celles de la licence [Creative Commons Attribution – Pas d'Utilisation Commerciale 4.0 (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/deed.fr), dont le texte complet figure dans le fichier [`LICENCE`](LICENCE).
+Ces conditions correspondent à celles de la licence [Creative Commons Attribution – Pas d'Utilisation Commerciale 4.0 (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/deed.fr), dont le texte complet figure dans le fichier [`LICENSE`](LICENSE).
 
 Le logiciel est fourni « tel quel », sans garantie d'aucune sorte. Les textes générés par les modèles de langage doivent être relus et vérifiés avant toute diffusion ; l'utilisateur reste responsable de ce qu'il publie et des coûts d'utilisation des API tierces.
