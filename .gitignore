@@ -32,4 +32,5 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+*.bak
 .DS_Store

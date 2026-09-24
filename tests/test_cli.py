@@ -630,3 +630,179 @@ def test_subject_requires_an_action():
     with pytest.raises(SystemExit):
         parser.parse_args(["subject"])
 
+
+
+# --- rédaction assistée ---------------------------------------------------------
+
+
+def test_subject_new_with_brief_calls_the_llm_author(subjects_dir, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+    received = {}
+
+    def fake_generate(cfg, slug, brief, dir_):
+        received.update(cfg=cfg, slug=slug, brief=brief, dir=dir_)
+        return dir_ / slug
+
+    monkeypatch.setattr(cli, "generate_subject", fake_generate)
+
+    rc = cli.main(["subject", "new", "cyber", "Manuel de cybersécurité"])
+
+    assert rc == 0
+    assert received == {"cfg": "cfg", "slug": "cyber", "brief": "Manuel de cybersécurité", "dir": subjects_dir}
+    out = capsys.readouterr().out
+    assert "manual subject check cyber --show" in out
+    assert "manual subject refine cyber" in out
+
+
+def test_subject_new_without_brief_does_not_call_the_llm(monkeypatch):
+    monkeypatch.setattr(cli, "generate_subject", lambda *a, **k: pytest.fail("LLM appelé sans brief"))
+
+    assert cli.main(["subject", "new", "vide"]) == 0
+
+
+def test_subject_refine_reports_changed_fields(subjects_dir, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+    received = {}
+
+    def fake_refine(cfg, slug, instruction, dir_):
+        received.update(slug=slug, instruction=instruction, dir=dir_)
+        return ["ton", "exclusions"]
+
+    monkeypatch.setattr(cli, "refine_subject", fake_refine)
+
+    rc = cli.main(["subject", "refine", "test-sujet", "plus décontracté"])
+
+    assert rc == 0
+    assert received == {"slug": "test-sujet", "instruction": "plus décontracté", "dir": subjects_dir}
+    out = capsys.readouterr().out
+    assert "ton, exclusions" in out
+    assert "subject.yml.bak" in out
+
+
+def test_subject_refine_reports_no_change(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+    monkeypatch.setattr(cli, "refine_subject", lambda cfg, slug, instruction, dir_: [])
+
+    rc = cli.main(["subject", "refine", "test-sujet", "rien"])
+
+    assert rc == 0
+    assert "Aucun changement" in capsys.readouterr().out
+
+
+def test_subject_criteria_proposes_criteria_for_the_toc_parties(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+    received = {}
+
+    def fake_propose(cfg, subject, output_dir, force):
+        received.update(slug=subject.slug, out=output_dir, force=force)
+        return {"Menaces": ["panorama"], "Gouvernance": ["role_comex"]}
+
+    monkeypatch.setattr(cli, "propose_partie_criteria", fake_propose)
+
+    rc = cli.main(["subject", "criteria"])
+
+    assert rc == 0
+    assert received == {"slug": "test-sujet", "out": tmp_path / "_output" / "test-sujet", "force": False}
+    out = capsys.readouterr().out
+    assert "Menaces" in out and "panorama" in out
+    assert tracing.is_configured() is True
+
+
+def test_subject_criteria_forwards_force_and_explicit_output(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_config", lambda: "cfg")
+    received = {}
+
+    def fake_propose(cfg, subject, output_dir, force):
+        received.update(out=output_dir, force=force)
+        return {}
+
+    monkeypatch.setattr(cli, "propose_partie_criteria", fake_propose)
+
+    rc = cli.main(["--output", str(tmp_path / "ailleurs"), "subject", "criteria", "test-sujet", "--force"])
+
+    assert rc == 0
+    assert received == {"out": tmp_path / "ailleurs", "force": True}
+    assert "Aucun critère ajouté" in capsys.readouterr().out
+
+
+def test_subject_edit_opens_the_editor_then_checks_the_subject(subjects_dir, monkeypatch, capsys):
+    monkeypatch.delenv("VISUAL", raising=False)
+    monkeypatch.setenv("EDITOR", "monediteur --wait")
+    ran = {}
+
+    def fake_run(command, check):
+        ran["command"] = command
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    rc = cli.main(["subject", "edit", "test-sujet"])
+
+    assert rc == 0
+    assert ran["command"] == ["monediteur", "--wait", str(subjects_dir / "test-sujet" / "subject.yml")]
+    assert "valide" in capsys.readouterr().out
+
+
+def test_subject_edit_prefers_visual_over_editor(monkeypatch):
+    monkeypatch.setenv("VISUAL", "visuel")
+    monkeypatch.setenv("EDITOR", "editeur")
+    ran = {}
+
+    def fake_run(command, check):
+        ran["command"] = command
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    cli.main(["subject", "edit"])
+
+    assert ran["command"][0] == "visuel"
+
+
+def test_subject_edit_requires_an_editor(monkeypatch, capsys):
+    monkeypatch.delenv("VISUAL", raising=False)
+    monkeypatch.delenv("EDITOR", raising=False)
+
+    rc = cli.main(["subject", "edit", "test-sujet"])
+
+    assert rc == 1
+    assert "EDITOR" in capsys.readouterr().err
+
+
+def test_subject_edit_reports_editor_failure(monkeypatch, capsys):
+    monkeypatch.setenv("EDITOR", "editeur")
+    monkeypatch.setattr(cli.subprocess, "run", lambda command, check: type("R", (), {"returncode": 3})())
+
+    rc = cli.main(["subject", "edit", "test-sujet"])
+
+    assert rc == 1
+    assert "code 3" in capsys.readouterr().err
+
+
+def test_subject_edit_reports_a_subject_left_incomplete(subjects_dir, monkeypatch, capsys):
+    monkeypatch.setenv("EDITOR", "editeur")
+
+    def fake_run(command, check):
+        (subjects_dir / "test-sujet" / "subject.yml").write_text("titre: seul\n", encoding="utf-8")
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    rc = cli.main(["subject", "edit", "test-sujet"])
+
+    assert rc == 1
+    assert "invalide" in capsys.readouterr().err
+
+
+def test_subject_edit_reports_a_missing_editor_program(monkeypatch, capsys):
+    monkeypatch.setenv("EDITOR", "editeur-inexistant")
+
+    def fake_run(command, check):
+        raise FileNotFoundError(command[0])
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    rc = cli.main(["subject", "edit", "test-sujet"])
+
+    assert rc == 1
+    assert "introuvable" in capsys.readouterr().err

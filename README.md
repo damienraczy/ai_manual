@@ -126,7 +126,10 @@ manual --subject prompt-engineering status # 3. affiche l'avancement
 | `manual publish 1 [--no-image]` | Prépare le paquet de publication LinkedIn de la section 1 (voir plus bas). |
 | `manual traces [--host H] [--port P]` | Lance l'interface web (défaut : `127.0.0.1:8787`) sur le journal des appels LLM. |
 | `manual subject list` | Liste les sujets disponibles (un sujet incomplet est signalé `INVALIDE`). |
-| `manual subject new SLUG` | Crée le squelette d'un nouveau sujet à remplir. |
+| `manual subject new SLUG ["descriptif"]` | Crée un sujet : rédigé par le modèle si un descriptif est donné, sinon squelette à remplir. |
+| `manual subject refine SLUG "consigne"` | Retouche un sujet selon une consigne en langage naturel. |
+| `manual subject edit [SLUG]` | Ouvre `subject.yml` dans l'éditeur puis le valide. |
+| `manual subject criteria [SLUG] [--force]` | Propose des critères de relecture par partie de la table des matières générée. |
 | `manual subject check [SLUG] [--show]` | Valide un sujet ; `--show` affiche les prompts tels qu'ils seront envoyés. |
 
 Flux de travail habituel :
@@ -158,15 +161,39 @@ Un **sujet** est un dossier `subjects/<identifiant>/` qui décrit de quoi parle 
 
 ### Créer un sujet
 
+**Rédigé par le modèle** (le plus rapide) : donner l'identifiant et un court descriptif.
+
 ```bash
-manual subject new cybersecurite-dirigeants     # crée le squelette
-# → remplir subjects/cybersecurite-dirigeants/subject.yml
-manual subject check cybersecurite-dirigeants   # valide ; --show affiche les prompts
-manual --subject cybersecurite-dirigeants init  # génère la table des matières
+manual subject new cybersecurite-dirigeants "Manuel de cybersécurité pour dirigeants non techniques, du débutant à l'opérationnel"
+manual subject check cybersecurite-dirigeants --show   # relire le cadrage et les prompts obtenus
+manual --subject cybersecurite-dirigeants init         # générer la table des matières
 manual --subject cybersecurite-dirigeants write
 ```
 
-Un identifiant ne contient que des minuscules, des chiffres et des tirets. Le squelette est refusé tant qu'un champ vaut « À COMPLÉTER ».
+Le modèle (`model_write`) propose tous les champs de `subject.yml` et quelques critères de relecture propres au sujet. Rien n'est écrit tant que sa réponse n'est pas valide.
+
+**À la main** : sans descriptif, `manual subject new <identifiant>` crée un squelette dont les champs valent « À COMPLÉTER » (refusés tant qu'ils restent tels quels), à remplir avec `manual subject edit <identifiant>`.
+
+### Retoucher un sujet
+
+| Commande | Effet |
+|---|---|
+| `manual subject refine SLUG "consigne"` | Le modèle applique la consigne (ex. « ton plus décontracté, sans juridique ») et affiche les champs modifiés. L'ancienne version est conservée dans `subject.yml.bak`. |
+| `manual subject edit [SLUG]` | Ouvre `subject.yml` dans `$VISUAL` / `$EDITOR`, puis le valide à la fermeture. |
+| `manual subject check [SLUG] [--show]` | Valide le sujet ; `--show` affiche les prompts tels qu'ils seront envoyés. |
+
+Le mieux est de faire `refine` ou `edit` **avant** `init` : le plan est généré une fois pour toutes à partir du sujet. Pour un nouveau plan après modification : `manual init --force`.
+
+### Critères de relecture par partie
+
+Les parties d'un manuel ne sont connues qu'après `init`. Une fois le plan validé :
+
+```bash
+manual --subject cybersecurite-dirigeants subject criteria   # le modèle propose 1 à 3 critères par partie pertinente
+manual --subject cybersecurite-dirigeants write
+```
+
+Les critères sont enregistrés dans `requirements.yml` du sujet (l'ancienne version va dans `requirements.yml.bak`, et les commentaires du fichier ne sont pas conservés). Les parties déjà pourvues sont laissées telles quelles, sauf avec `--force`. Si le plan est régénéré avec d'autres titres de parties, relancer la commande.
 
 ### Le fichier `subject.yml`
 

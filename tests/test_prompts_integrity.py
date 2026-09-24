@@ -70,3 +70,15 @@ def test_shared_requirements_are_subject_agnostic():
     assert data["generic"]
     assert "parties" not in data
     assert "multi_modeles" not in [c["id"] for c in data["generic"]]
+
+
+def test_authoring_templates_use_exactly_their_placeholders():
+    expected = {
+        "subject_generate_instruction.md": {"brief", "criteres_communs"},
+        "subject_refine_instruction.md": {"current", "instruction"},
+        "partie_criteria_instruction.md": {"subject_yaml", "parties", "criteres_existants"},
+        "author_system_prompt.md": set(),
+    }
+    for name, placeholders in expected.items():
+        template = Template((PROMPTS_DIR / name).read_text(encoding="utf-8"))
+        assert set(template.get_identifiers()) == placeholders, name

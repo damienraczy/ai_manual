@@ -1,4 +1,4 @@
-"""CLI de génération itérative du manuel de Prompt Engineering.
+"""CLI de génération itérative de manuels de référence, sujet par sujet.
 
 Ce package orchestre des appels à des modèles Ollama cloud (rôles rédacteur,
 juge, réécrivain et mémoire) pour produire, section par section, un manuel

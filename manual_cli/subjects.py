@@ -183,7 +183,7 @@ class Subject(SubjectSpec):
         """
         base = load_requirements(DEFAULT_REQUIREMENTS_PATH)
         path = self.directory / REQUIREMENTS_FILENAME
-        extra = _load_yaml_mapping(path, allow_missing=True)
+        extra = load_yaml_mapping(path, allow_missing=True)
         extra_generic = extra.get("generic") or []
         _check_criteria(extra_generic, path)
         generic = list(base["generic"]) + extra_generic
@@ -198,7 +198,7 @@ class Subject(SubjectSpec):
         return {**base, "generic": generic, "parties": parties}
 
 
-def _load_yaml_mapping(path: Path, *, allow_missing: bool = False) -> dict:
+def load_yaml_mapping(path: Path, *, allow_missing: bool = False) -> dict:
     """Lit un fichier YAML censé contenir un dictionnaire.
 
     Args:
@@ -248,6 +248,48 @@ def _check_criteria(criteria: object, path: Path, where: str = "critères commun
                 f"{where} : severity « {criterion['severity']} » inconnue pour « {criterion['id']} » "
                 f"(attendu : {', '.join(SEVERITIES)})."
             )
+
+
+class _LiteralDumper(yaml.SafeDumper):
+    """Dumper YAML écrivant les textes multilignes en blocs littéraux lisibles (`|`)."""
+
+
+def _represent_str(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
+    """Représente une chaîne multiligne en bloc littéral, les autres normalement."""
+    style = "|" if "\n" in value else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+
+_LiteralDumper.add_representer(str, _represent_str)
+
+
+def dump_yaml(data: dict) -> str:
+    """Sérialise un dictionnaire en YAML lisible et éditable à la main.
+
+    Args:
+        data: Dictionnaire à écrire.
+
+    Returns:
+        Le texte YAML : ordre des clés conservé, accents non échappés,
+        textes multilignes en blocs littéraux.
+    """
+    return yaml.dump(data, Dumper=_LiteralDumper, allow_unicode=True, sort_keys=False, width=100)
+
+
+def validate_slug(slug: str) -> None:
+    """Vérifie qu'un identifiant de sujet est utilisable comme nom de dossier.
+
+    Args:
+        slug: Identifiant à contrôler.
+
+    Raises:
+        SubjectError: S'il n'est pas composé de minuscules, chiffres et
+            tirets, ou s'il commence par un tiret.
+    """
+    if not SLUG_PATTERN.match(slug):
+        raise SubjectError(
+            f"Identifiant invalide : {slug!r} (minuscules, chiffres et tirets ; ne commence pas par un tiret)."
+        )
 
 
 def list_subjects(subjects_dir: Path = SUBJECTS_DIR) -> list[str]:
@@ -311,7 +353,7 @@ def load_subject(slug: str, subjects_dir: Path = SUBJECTS_DIR) -> Subject:
     path = directory / SUBJECT_FILENAME
     if not path.is_file():
         raise SubjectError(f"Sujet {slug!r} introuvable : {path} n'existe pas.")
-    data = _load_yaml_mapping(path)
+    data = load_yaml_mapping(path)
     try:
         spec = SubjectSpec.model_validate(data)
     except ValidationError as exc:
@@ -334,10 +376,7 @@ def scaffold_subject(slug: str, subjects_dir: Path = SUBJECTS_DIR) -> Path:
     Raises:
         SubjectError: Si l'identifiant est invalide ou si le sujet existe déjà.
     """
-    if not SLUG_PATTERN.match(slug):
-        raise SubjectError(
-            f"Identifiant invalide : {slug!r} (minuscules, chiffres et tirets ; ne commence pas par un tiret)."
-        )
+    validate_slug(slug)
     directory = subjects_dir / slug
     if directory.exists():
         raise SubjectError(f"Le sujet {slug!r} existe déjà : {directory}")

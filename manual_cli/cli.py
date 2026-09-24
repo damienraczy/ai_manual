@@ -5,7 +5,9 @@ Sous-commandes : `init` (génère la table des matières), `write`
 (affiche l'avancement), `redo` (régénère une section précise), `publish`
 (prépare le paquet de publication LinkedIn d'un chapitre terminé),
 `traces` (interface web de visualisation des appels LLM journalisés) et
-`subject` (liste, crée et contrôle les sujets de manuel).
+`subject` (liste, crée, retouche, édite et contrôle les sujets de manuel,
+dont trois opérations assistées par LLM : création depuis un descriptif,
+retouche par consigne et critères par partie).
 
 Le sujet traité se choisit avec `--subject` (facultatif s'il n'en existe
 qu'un) ; le manuel est écrit dans `output/<sujet>/` sauf `--output`.
@@ -14,6 +16,9 @@ qu'un) ; le manuel est écrit dans `output/<sujet>/` sauf `--output`.
 from __future__ import annotations
 
 import argparse
+import os
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,7 +31,9 @@ from .providers import ProviderError
 from .publish import PublishError, publish_section
 from .requirements_loader import RequirementsError
 from .state import load_state, state_exists
+from .subject_author import generate_subject, propose_partie_criteria, refine_subject
 from .subjects import (
+    SUBJECT_FILENAME,
     SUBJECTS_DIR,
     Subject,
     SubjectError,
@@ -246,10 +253,10 @@ def cmd_subject_list(args: argparse.Namespace) -> int:
 
 
 def cmd_subject_new(args: argparse.Namespace) -> int:
-    """Crée le squelette d'un nouveau sujet.
+    """Crée un nouveau sujet : squelette à remplir, ou rédigé par le LLM depuis un descriptif.
 
     Args:
-        args: Arguments parsés (`slug`).
+        args: Arguments parsés (`slug`, `brief`).
 
     Returns:
         `0` en cas de succès.
@@ -257,12 +264,121 @@ def cmd_subject_new(args: argparse.Namespace) -> int:
     Raises:
         SubjectError: Si l'identifiant est invalide ou déjà pris (capturée par `main`).
     """
+    if args.brief:
+        directory = generate_subject(load_config(), args.slug, args.brief, SUBJECTS_DIR)
+        print(f"Sujet créé et rédigé par le modèle : {directory}")
+        print(f"  - Relis-le : manual subject check {args.slug} --show")
+        print(f'  - Retouche-le : manual subject refine {args.slug} "ta consigne"  (ou manual subject edit {args.slug})')
+        print(f"  - Puis génère le plan : manual --subject {args.slug} init")
+        return 0
     directory = scaffold_subject(args.slug, SUBJECTS_DIR)
     print(f"Sujet créé : {directory}")
-    print(f"  1. Remplis {directory / 'subject.yml'} (les champs « À COMPLÉTER »).")
+    print(f"  1. Remplis {directory / SUBJECT_FILENAME} (les champs « À COMPLÉTER »), ou lance : manual subject edit {args.slug}")
     print(f"  2. Ajoute au besoin tes critères dans {directory / 'requirements.yml'}.")
     print(f"  3. Vérifie avec : manual subject check {args.slug}")
     return 0
+
+
+def cmd_subject_refine(args: argparse.Namespace) -> int:
+    """Retouche un sujet existant selon une consigne en langage naturel.
+
+    Args:
+        args: Arguments parsés (`slug`, `instruction`).
+
+    Returns:
+        `0` en cas de succès (y compris si le modèle n'a rien changé).
+
+    Raises:
+        SubjectError: Si le sujet est introuvable ou invalide (capturée par `main`).
+    """
+    changed = refine_subject(load_config(), args.slug, args.instruction, SUBJECTS_DIR)
+    if not changed:
+        print("Aucun changement : le modèle a jugé que le sujet répondait déjà à la consigne.")
+        return 0
+    path = SUBJECTS_DIR / args.slug / SUBJECT_FILENAME
+    print(f"Champs modifiés : {', '.join(changed)}")
+    print(f"  - Ancienne version conservée : {path}.bak")
+    print(f"  - Relis le résultat : manual subject check {args.slug} --show")
+    return 0
+
+
+def cmd_subject_criteria(args: argparse.Namespace) -> int:
+    """Propose des critères de relecture par partie de la table des matières générée.
+
+    Args:
+        args: Arguments parsés (`slug`, `force`, `subject`, `output`).
+
+    Returns:
+        `0` en cas de succès (y compris si rien n'est ajouté).
+
+    Raises:
+        SubjectError: Si aucune table des matières n'existe pour ce sujet (capturée par `main`).
+    """
+    subject = load_subject(resolve_slug(args.slug or args.subject, SUBJECTS_DIR), SUBJECTS_DIR)
+    output_dir = _output_dir(args, subject)
+    tracing.configure(output_dir)
+    added = propose_partie_criteria(load_config(), subject, output_dir, force=args.force)
+    if not added:
+        print("Aucun critère ajouté (parties déjà pourvues, ou rien de spécifique à proposer). --force remplace l'existant.")
+        return 0
+    for partie, ids in added.items():
+        print(f"  - {partie} : {', '.join(ids)}")
+    print(f"Critères enregistrés dans {subject.directory / 'requirements.yml'} (sauvegarde : .bak).")
+    print(f"Relance ensuite : manual --subject {subject.slug} write")
+    return 0
+
+
+def cmd_subject_edit(args: argparse.Namespace) -> int:
+    """Ouvre le `subject.yml` d'un sujet dans l'éditeur, puis le valide.
+
+    Args:
+        args: Arguments parsés (`slug`, `subject`).
+
+    Returns:
+        `0` si le sujet est valide après édition.
+
+    Raises:
+        SubjectError: Si aucun éditeur n'est défini (`VISUAL`/`EDITOR`), s'il
+            est introuvable ou échoue, ou si le sujet est invalide après édition.
+    """
+    slug = resolve_slug(args.slug or args.subject, SUBJECTS_DIR)
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if not editor:
+        raise SubjectError("Aucun éditeur : définis la variable d'environnement EDITOR (ex. export EDITOR=nano).")
+    path = SUBJECTS_DIR / slug / SUBJECT_FILENAME
+    try:
+        result = subprocess.run([*shlex.split(editor), str(path)], check=False)
+    except FileNotFoundError as exc:
+        raise SubjectError(f"Éditeur introuvable : {editor!r}.") from exc
+    if result.returncode != 0:
+        raise SubjectError(f"L'éditeur {editor!r} s'est terminé avec le code {result.returncode}.")
+    _print_subject_summary(load_subject(slug, SUBJECTS_DIR), show=False)
+    return 0
+
+
+def _print_subject_summary(subject: Subject, show: bool) -> None:
+    """Affiche le résumé d'un sujet, en construisant ses prompts et critères.
+
+    Args:
+        subject: Sujet chargé et validé.
+        show: Si vrai, affiche aussi les prompts tels qu'ils seront envoyés.
+
+    Raises:
+        SubjectError: Si les critères du sujet sont mal formés.
+    """
+    system_prompt = subject.system_prompt()
+    toc_instruction = subject.toc_instruction()
+    requirements = subject.requirements()
+    blocking = sum(1 for c in requirements["generic"] if c["severity"] == "bloquant")
+    print(f"Sujet {subject.slug!r} valide : {subject.titre} ({subject.langue}).")
+    print(f"  - {len(requirements['generic'])} critères communs ({blocking} bloquants)")
+    print(f"  - {len(requirements['parties'])} partie(s) avec critères propres")
+    print(f"  - prompt système : {len(system_prompt)} caractères, instruction de plan : {len(toc_instruction)}")
+    if show:
+        print("\n===== Prompt système =====\n")
+        print(system_prompt)
+        print("\n===== Instruction de plan =====\n")
+        print(toc_instruction)
 
 
 def cmd_subject_check(args: argparse.Namespace) -> int:
@@ -278,19 +394,7 @@ def cmd_subject_check(args: argparse.Namespace) -> int:
         SubjectError: Si le sujet est incomplet ou mal formé (capturée par `main`).
     """
     subject = load_subject(resolve_slug(args.slug, SUBJECTS_DIR), SUBJECTS_DIR)
-    system_prompt = subject.system_prompt()
-    toc_instruction = subject.toc_instruction()
-    requirements = subject.requirements()
-    blocking = sum(1 for c in requirements["generic"] if c["severity"] == "bloquant")
-    print(f"Sujet {subject.slug!r} valide : {subject.titre} ({subject.langue}).")
-    print(f"  - {len(requirements['generic'])} critères communs ({blocking} bloquants)")
-    print(f"  - {len(requirements['parties'])} partie(s) avec critères propres")
-    print(f"  - prompt système : {len(system_prompt)} caractères, instruction de plan : {len(toc_instruction)}")
-    if args.show:
-        print("\n===== Prompt système =====\n")
-        print(system_prompt)
-        print("\n===== Instruction de plan =====\n")
-        print(toc_instruction)
+    _print_subject_summary(subject, args.show)
     return 0
 
 
@@ -302,7 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
         (`init`, `write`, `status`, `redo`, `publish`, `traces`, `subject`).
     """
     parser = argparse.ArgumentParser(
-        prog="manual", description="Génère le manuel de Prompt Engineering section par section."
+        prog="manual", description="Génère un manuel de référence section par section, sur le sujet de votre choix."
     )
     parser.add_argument(
         "--subject",
@@ -364,9 +468,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_subject_list = subject_sub.add_parser("list", help="Liste les sujets disponibles.")
     p_subject_list.set_defaults(func=cmd_subject_list)
 
-    p_subject_new = subject_sub.add_parser("new", help="Crée le squelette d'un nouveau sujet.")
+    p_subject_new = subject_sub.add_parser(
+        "new", help="Crée un sujet : squelette à remplir, ou rédigé par le LLM si un descriptif est donné."
+    )
     p_subject_new.add_argument("slug", help="Identifiant du sujet : minuscules, chiffres et tirets.")
+    p_subject_new.add_argument(
+        "brief", nargs="?", default=None, help="Descriptif libre du manuel voulu : le LLM rédige alors le sujet."
+    )
     p_subject_new.set_defaults(func=cmd_subject_new)
+
+    p_subject_refine = subject_sub.add_parser("refine", help="Retouche un sujet selon une consigne (LLM).")
+    p_subject_refine.add_argument("slug", help="Sujet à retoucher.")
+    p_subject_refine.add_argument("instruction", help='Consigne libre, ex. « ton plus décontracté, sans juridique ».')
+    p_subject_refine.set_defaults(func=cmd_subject_refine)
+
+    p_subject_criteria = subject_sub.add_parser(
+        "criteria", help="Propose des critères de relecture par partie de la TOC générée (LLM)."
+    )
+    p_subject_criteria.add_argument("slug", nargs="?", default=None, help="Sujet concerné (défaut : --subject ou l'unique sujet).")
+    p_subject_criteria.add_argument("--force", action="store_true", help="Remplace les critères déjà présents pour ces parties.")
+    p_subject_criteria.set_defaults(func=cmd_subject_criteria)
+
+    p_subject_edit = subject_sub.add_parser("edit", help="Ouvre subject.yml dans l'éditeur ($VISUAL / $EDITOR), puis le valide.")
+    p_subject_edit.add_argument("slug", nargs="?", default=None, help="Sujet à éditer (défaut : --subject ou l'unique sujet).")
+    p_subject_edit.set_defaults(func=cmd_subject_edit)
 
     p_subject_check = subject_sub.add_parser("check", help="Valide un sujet et ses prompts.")
     p_subject_check.add_argument("slug", nargs="?", default=None, help="Sujet à contrôler (défaut : l'unique sujet).")
