@@ -1,0 +1,1 @@
+Relis attentivement cette table des matières et améliore-la : cohérence et progression logique des parties et des chapitres, lacunes à combler, redites à supprimer, équilibre entre les parties, titres plus précis. Ne bouleverse pas ce qui fonctionne déjà.

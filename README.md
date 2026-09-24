@@ -125,6 +125,7 @@ manual --subject prompt-engineering status # 3. affiche l'avancement
 | `manual status` | Affiche l'état de chaque section (`done`, en attente, à revoir) et le total. |
 | `manual redo 7 [--max-rewrite N]` | Régénère la section 7 depuis zéro. |
 | `manual improve 7 [-i "consigne" \| -f FICHIER]` | Améliore la section 7 déjà écrite : son texte sert d'amorce à une nouvelle génération enrichie (voir [Améliorer des sections](#améliorer-des-sections-déjà-écrites)). |
+| `manual improve-toc [-i "consigne" \| -f FICHIER]` | Améliore la table des matières en partant de l'actuelle : chapitres rédigés figés, version précédente archivée (voir [Améliorer la table des matières](#améliorer-la-table-des-matières)). |
 | `manual publish 1 [--no-image]` | Prépare le paquet de publication LinkedIn de la section 1 (voir plus bas). |
 | `manual traces [--host H] [--port P]` | Lance l'interface web (défaut : `127.0.0.1:8787`) sur le journal des appels LLM. |
 | `manual subject list` | Liste les sujets disponibles (un sujet incomplet est signalé `INVALIDE`). |
@@ -137,7 +138,7 @@ manual --subject prompt-engineering status # 3. affiche l'avancement
 Flux de travail habituel :
 
 1. Choisir ou créer le sujet : `manual subject list`, ou `manual subject new SLUG "descriptif"` puis `manual subject check SLUG --show`.
-2. `manual init`, puis relire `output/<sujet>/00_toc.md` ; relancer `manual init --force` tant que le plan ne convient pas.
+2. `manual init`, puis relire `output/<sujet>/00_toc.md` ; améliorer le plan avec `manual improve-toc` (ou `manual init --force` pour repartir de zéro, tant qu'aucun chapitre n'est écrit).
 3. Facultatif : `manual subject criteria` pour ajouter des critères de relecture par partie.
 4. `manual write` ; en cas d'interruption, relancer la même commande : les sections terminées sont conservées.
 5. `manual status` pour repérer les sections « à revoir », puis `manual redo N` (refaire de zéro) ou `manual improve N` (améliorer l'existant) pour celles qui ne conviennent pas.
@@ -161,6 +162,22 @@ manual improve 3 5-8 -f consigne.txt                # plusieurs sections, consig
 
 Différence avec `redo` : `redo` repart de zéro sans relire l'existant ; `improve` part de l'existant.
 
+### Améliorer la table des matières
+
+`manual improve-toc` fait relire et améliorer le plan **en partant de l'actuel**, sans repartir de zéro ni rien perdre :
+
+```bash
+manual improve-toc                                          # consigne par défaut : « relis et améliore »
+manual improve-toc -i "ajoute un chapitre sur l'évaluation, fusionne les chapitres 4 et 5"
+manual improve-toc -f consigne.txt
+```
+
+- **Les chapitres déjà rédigés sont figés** : le modèle doit les conserver avec le même numéro, le même titre et les mêmes sous-sections ; sinon sa réponse est refusée et il est prié de corriger. Le reste (chapitres non rédigés, parties) peut être réordonné, fusionné, scindé, ajouté ou supprimé, avec une numérotation consécutive de 1 à N.
+- **L'avancement est préservé** : les chapitres inchangés gardent leur statut ; les chapitres nouveaux ou modifiés repassent en attente, à rédiger avec `manual write`.
+- **Rien n'est supprimé** : les fichiers de chapitres et la mémoire ne sont jamais touchés (les fichiers que le nouveau plan n'utilise plus sont listés, laissés en place). La version précédente du plan est archivée dans `output/<sujet>/toc_history/<date-heure>/` (`manifest.json` et `00_toc.md`), à chaque exécution.
+- **Critères par partie** : si une partie est renommée, les critères propres à l'ancien titre n'ont plus de correspondance ; la commande le signale (voir `manual subject criteria`).
+- Avant d'avoir rédigé quoi que ce soit, tout le plan est modifiable. Pour repartir d'une page blanche, `manual init --force` reste disponible.
+
 ### Suivi des appels LLM
 
 Chaque appel (réussi ou non) est journalisé dans `output/<sujet>/traces/calls.jsonl`. `manual traces` propose une interface web locale pour les parcourir, ce qui aide à diagnostiquer les délais d'attente (timeouts) ou les lenteurs d'un modèle. Elle nécessite l'extra `web` (Flask).
@@ -174,6 +191,7 @@ Dans le répertoire de sortie (`output/<sujet>/` par défaut) :
 | `00_toc.md` | La table des matières générée |
 | `NN_titre-du-chapitre.md` | Un fichier Markdown par chapitre (`.md.bak` : version précédente après `improve` ; `.candidate.md` : version refusée par la relecture) |
 | `manifest.json` | L'état de chaque section (statut, nombre de tentatives) et le sujet utilisé |
+| `toc_history/<date-heure>/` | Anciennes versions du plan (`manifest.json`, `00_toc.md`), archivées par `improve-toc` |
 | `memory.md` | Le résumé cumulé transmis aux rédactions suivantes |
 | `traces/calls.jsonl` | Le journal de tous les appels LLM |
 | `publish/<chapitre>/` | Les paquets de publication LinkedIn |

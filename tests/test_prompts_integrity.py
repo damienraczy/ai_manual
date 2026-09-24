@@ -92,3 +92,11 @@ def test_improve_templates_use_exactly_their_placeholders():
     default = Template((PROMPTS_DIR / "improve_default_instruction.md").read_text(encoding="utf-8"))
     assert set(default.get_identifiers()) == set()
     assert "Relis" in default.template
+
+
+def test_toc_improve_templates_use_exactly_their_placeholders():
+    template = Template((PROMPTS_DIR / "toc_improve_instruction.md").read_text(encoding="utf-8"))
+    assert set(template.get_identifiers()) == {"toc_actuelle", "consigne", "chapitres_figes"}
+    default = Template((PROMPTS_DIR / "toc_improve_default_instruction.md").read_text(encoding="utf-8"))
+    assert set(default.get_identifiers()) == set()
+    assert "Relis" in default.template

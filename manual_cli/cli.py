@@ -3,7 +3,8 @@
 Sous-commandes : `init` (génère la table des matières), `write`
 (rédige les sections en attente ou une sélection via `-s`), `status`
 (affiche l'avancement), `redo` (régénère une section précise), `improve`
-(améliore des sections déjà écrites, avec une consigne facultative), `publish`
+(améliore des sections déjà écrites, avec une consigne facultative),
+`improve-toc` (améliore la table des matières en préservant l'existant), `publish`
 (prépare le paquet de publication LinkedIn d'un chapitre terminé),
 `traces` (interface web de visualisation des appels LLM journalisés) et
 `subject` (liste, crée, retouche, édite et contrôle les sujets de manuel,
@@ -25,7 +26,7 @@ from pathlib import Path
 
 from . import tracing
 from .config import ConfigError, load_config
-from .generator import GeneratorError, generate_toc, run_improve, run_write
+from .generator import GeneratorError, generate_toc, improve_toc, run_improve, run_write
 from .parsing import ParsingError
 from .patterns import PatternError, parse_section_patterns
 from .providers import ProviderError
@@ -220,6 +221,44 @@ def cmd_improve(args: argparse.Namespace) -> int:
                 f"[NON RETENU] {section.numero}. {section.titre} : la nouvelle version n'a pas passé la relecture ; "
                 f"l'original est conservé, version candidate dans {result.path}"
             )
+    return 0
+
+
+def cmd_improve_toc(args: argparse.Namespace) -> int:
+    """Améliore la table des matières en partant de l'actuelle, sans rien perdre.
+
+    Args:
+        args: Arguments parsés (`instruction`, `instruction_file`).
+
+    Returns:
+        `0` en cas de succès (y compris si le modèle ne change rien).
+
+    Raises:
+        SubjectError: Si la consigne est donnée deux fois ou illisible (capturée par `main`).
+        GeneratorError: Si aucun manifeste n'existe ou s'il est d'un autre sujet (capturée par `main`).
+    """
+    instruction = _text_argument(args.instruction, args.instruction_file, "consigne", "instruction-file")
+    cfg = load_config()
+    subject = _load_subject(args)
+    output_dir = _output_dir(args, subject)
+    tracing.configure(output_dir)
+    result = improve_toc(cfg, output_dir, subject, instruction)
+    if not result.modified:
+        print("Aucun changement : le modèle a jugé la table des matières satisfaisante.")
+        return 0
+    print(f"Table des matières améliorée. Version précédente archivée dans {result.history_dir}")
+    for section in result.changed:
+        print(f"  - à (re)rédiger : {section.numero}. {section.titre}")
+    for section in result.removed:
+        print(f"  - retiré : {section.numero}. {section.titre}")
+    if result.orphan_files:
+        print(f"Fichiers de chapitres non repris (laissés en place) : {', '.join(result.orphan_files)}")
+    if result.orphan_criteria:
+        print(
+            f"Critères de parties sans correspondance : {', '.join(result.orphan_criteria)} "
+            "(relance `manual subject criteria --force` ou corrige requirements.yml)"
+        )
+    print(f"Relis {output_dir / '00_toc.md'}, puis `manual write`.")
     return 0
 
 
@@ -480,7 +519,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     Returns:
         Le parseur configuré avec toutes les sous-commandes
-        (`init`, `write`, `status`, `redo`, `improve`, `publish`, `traces`, `subject`).
+        (`init`, `write`, `status`, `redo`, `improve`, `improve-toc`, `publish`, `traces`, `subject`).
     """
     parser = argparse.ArgumentParser(
         prog="manual", description="Génère un manuel de référence section par section, sur le sujet de votre choix."
@@ -543,6 +582,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_improve.add_argument("--max-rewrite", type=int, default=2, help="Nombre max de réécritures après rejet du juge.")
     p_improve.add_argument("-w", "--worker", type=int, default=4, help="Nombre de workers en parallèle (défaut : 4).")
     p_improve.set_defaults(func=cmd_improve)
+
+    p_improve_toc = sub.add_parser(
+        "improve-toc",
+        help="Améliore la table des matières en préservant l'existant (chapitres rédigés figés, version précédente archivée).",
+    )
+    p_improve_toc.add_argument(
+        "-i", "--instruction", default=None, help="Consigne d'amélioration (défaut : « relis et améliore »)."
+    )
+    p_improve_toc.add_argument(
+        "-f",
+        "--instruction-file",
+        default=None,
+        metavar="FICHIER",
+        help="Lit la consigne dans un fichier texte UTF-8 ; `-` = entrée standard.",
+    )
+    p_improve_toc.set_defaults(func=cmd_improve_toc)
 
     p_publish = sub.add_parser(
         "publish", help="Prépare le paquet de publication LinkedIn d'un chapitre terminé (article, post, visuel)."

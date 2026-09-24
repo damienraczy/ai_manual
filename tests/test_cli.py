@@ -1017,3 +1017,104 @@ def test_improve_reports_an_invalid_section_pattern(tmp_path, monkeypatch, capsy
 def test_improve_requires_at_least_one_section():
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args(["improve"])
+
+
+# --- improve-toc -------------------------------------------------------------------
+
+
+def make_toc_result(modified=True, tmp=None):
+    from manual_cli.generator import TocImproveResult
+
+    state = make_manual_state()
+    if not modified:
+        return TocImproveResult(state, False, [], [], [], [], None)
+    return TocImproveResult(
+        state=state,
+        modified=True,
+        changed=state.sections,
+        removed=state.sections,
+        orphan_files=["03_trois.md"],
+        orphan_criteria=["Bases"],
+        history_dir=(tmp or Path("/x")) / "toc_history" / "20260924-120000",
+    )
+
+
+def capture_improve_toc(monkeypatch, result):
+    received = {}
+
+    def fake_improve_toc(cfg, out, subject, instruction):
+        received.update(slug=subject.slug, out=out, instruction=instruction)
+        return result
+
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    monkeypatch.setattr(cli, "improve_toc", fake_improve_toc)
+    return received
+
+
+def test_improve_toc_defaults_and_summary(tmp_path, monkeypatch, capsys):
+    received = capture_improve_toc(monkeypatch, make_toc_result(tmp=tmp_path))
+
+    rc = cli.main(["--output", str(tmp_path), "improve-toc"])
+
+    assert rc == 0
+    assert received == {"slug": "test-sujet", "out": tmp_path, "instruction": None}
+    out = capsys.readouterr().out
+    assert "toc_history" in out
+    assert "1. Un" in out
+    assert "03_trois.md" in out
+    assert "Bases" in out and "manual subject criteria" in out
+    assert tracing.is_configured() is True
+
+
+def test_improve_toc_forwards_inline_instruction(tmp_path, monkeypatch):
+    received = capture_improve_toc(monkeypatch, make_toc_result(tmp=tmp_path))
+
+    cli.main(["--output", str(tmp_path), "improve-toc", "-i", "Ajoute un chapitre sur l'éthique"])
+
+    assert received["instruction"] == "Ajoute un chapitre sur l'éthique"
+
+
+def test_improve_toc_reads_instruction_from_file(tmp_path, monkeypatch):
+    received = capture_improve_toc(monkeypatch, make_toc_result(tmp=tmp_path))
+    f = tmp_path / "consigne.txt"
+    f.write_text(LONG_BRIEF, encoding="utf-8")
+
+    cli.main(["--output", str(tmp_path), "improve-toc", "-f", str(f)])
+
+    assert received["instruction"] == LONG_BRIEF
+
+
+def test_improve_toc_refuses_inline_instruction_and_file_together(tmp_path, monkeypatch, capsys):
+    capture_improve_toc(monkeypatch, make_toc_result(tmp=tmp_path))
+    f = tmp_path / "c.txt"
+    f.write_text("x", encoding="utf-8")
+
+    rc = cli.main(["--output", str(tmp_path), "improve-toc", "-i", "a", "-f", str(f)])
+
+    assert rc == 1
+    assert "pas les deux" in capsys.readouterr().err
+
+
+def test_improve_toc_reports_no_change(tmp_path, monkeypatch, capsys):
+    capture_improve_toc(monkeypatch, make_toc_result(modified=False))
+
+    rc = cli.main(["--output", str(tmp_path), "improve-toc"])
+
+    assert rc == 0
+    assert "Aucun changement" in capsys.readouterr().out
+
+
+def test_improve_toc_summary_omits_empty_sections(tmp_path, monkeypatch, capsys):
+    from manual_cli.generator import TocImproveResult
+
+    state = make_manual_state()
+    result = TocImproveResult(state, True, [], [], [], [], tmp_path / "toc_history" / "x")
+    capture_improve_toc(monkeypatch, result)
+
+    rc = cli.main(["--output", str(tmp_path), "improve-toc"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "toc_history" in out
+    assert "Fichiers de chapitres" not in out
+    assert "Critères" not in out

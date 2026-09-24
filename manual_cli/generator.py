@@ -16,8 +16,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass
+from datetime import datetime
 from functools import partial
 from pathlib import Path
+
+from pydantic import model_validator
 
 from .config import AppConfig
 from .memory import INITIAL_DIGEST, ensure_budget, load_digest, save_digest, update_digest
@@ -25,7 +28,15 @@ from .parsing import call_structured
 from .providers import OllamaCloudClient
 from .requirements_loader import blocking_ids, criteria_for_partie, render_criteria
 from .schemas import JudgeVerdict, TocSchema
-from .state import ManualState, SectionState, build_manual_state, load_state, save_state, state_exists
+from .state import (
+    ManualState,
+    SectionState,
+    build_manual_state,
+    load_state,
+    manifest_path,
+    save_state,
+    state_exists,
+)
 from .subjects import Subject
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -526,6 +537,173 @@ def run_improve(
     )
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(targets)))) as executor:
         return list(executor.map(worker_fn, targets))
+
+
+def _toc_preserving_schema(locked: list[SectionState]) -> type[TocSchema]:
+    """Construit un schéma de TOC qui impose de conserver les chapitres déjà rédigés.
+
+    Le message de l'erreur de validation est renvoyé au modèle par
+    `parsing.call_structured`, qui lui redemande alors une correction.
+
+    Args:
+        locked: Sections déjà rédigées, à retrouver à l'identique (numéro,
+            titre, sous-sections) dans la table des matières proposée.
+
+    Returns:
+        Une sous-classe de `TocSchema` vérifiant en plus la numérotation
+        consécutive des chapitres et la présence des chapitres figés.
+    """
+
+    class PreservingToc(TocSchema):
+        @model_validator(mode="after")
+        def _keep_written_chapters(self) -> TocSchema:
+            chapters = [c for partie in self.parties for c in partie.chapitres]
+            numeros = sorted(c.numero for c in chapters)
+            if numeros != list(range(1, len(numeros) + 1)):
+                raise ValueError("Les numéros de chapitres doivent être consécutifs de 1 à N, sans trou ni doublon.")
+            by_numero = {c.numero: c for c in chapters}
+            problems = []
+            for section in locked:
+                chapter = by_numero.get(section.numero)
+                if chapter is None:
+                    problems.append(f"le chapitre {section.numero} « {section.titre} » (déjà rédigé) a disparu")
+                    continue
+                subs = [f"{ss.numero} {ss.titre}" for ss in chapter.sous_sections]
+                if chapter.titre != section.titre or subs != section.sous_sections:
+                    problems.append(
+                        f"le chapitre {section.numero} (déjà rédigé) doit rester « {section.titre} » "
+                        f"avec exactement les sous-sections {section.sous_sections}"
+                    )
+            if problems:
+                raise ValueError(" ; ".join(problems))
+            return self
+
+    return PreservingToc
+
+
+@dataclass
+class TocImproveResult:
+    """Résultat de l'amélioration de la table des matières.
+
+    Attributes:
+        state: État du manuel après amélioration (inchangé si `modified` est faux).
+        modified: `True` si la table des matières a été modifiée et réécrite.
+        changed: Sections nouvelles ou modifiées, à (re)rédiger.
+        removed: Anciennes sections dont le couple (numéro, titre) n'existe plus.
+        orphan_files: Fichiers de chapitres existants que la nouvelle table
+            n'utilise plus (laissés en place, jamais supprimés).
+        orphan_criteria: Titres de parties portant des critères propres au
+            sujet qui n'existent plus dans la nouvelle table des matières.
+        history_dir: Dossier d'archivage de la version précédente, ou `None`.
+    """
+
+    state: ManualState
+    modified: bool
+    changed: list[SectionState]
+    removed: list[SectionState]
+    orphan_files: list[str]
+    orphan_criteria: list[str]
+    history_dir: Path | None
+
+
+def _archive_toc(output_dir: Path) -> Path:
+    """Archive le manifeste et la TOC lisible actuels dans `toc_history/<horodatage>/`.
+
+    Args:
+        output_dir: Répertoire de sortie du manuel.
+
+    Returns:
+        Le dossier d'archive créé (suffixé si l'horodatage existe déjà).
+    """
+    history_root = output_dir / "toc_history"
+    base = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = history_root / base
+    counter = 2
+    while target.exists():
+        target = history_root / f"{base}-{counter}"
+        counter += 1
+    target.mkdir(parents=True)
+    for source in (manifest_path(output_dir), output_dir / "00_toc.md"):
+        if source.is_file():
+            shutil.copyfile(source, target / source.name)
+    return target
+
+
+def improve_toc(
+    cfg: AppConfig,
+    output_dir: Path,
+    subject: Subject,
+    instruction: str | None = None,
+) -> TocImproveResult:
+    """Améliore la table des matières en partant de l'actuelle, sans rien perdre.
+
+    Le modèle reçoit la table actuelle, la consigne et la liste des chapitres
+    déjà rédigés, qu'il doit conserver à l'identique. Les chapitres inchangés
+    gardent leur avancement ; les chapitres nouveaux ou modifiés repassent en
+    attente. Les fichiers de chapitres et la mémoire ne sont jamais touchés,
+    et la version précédente est archivée dans `toc_history/`.
+
+    Args:
+        cfg: Configuration applicative résolue.
+        output_dir: Répertoire de sortie du manuel (avec son manifeste).
+        subject: Sujet fournissant le prompt système.
+        instruction: Consigne d'amélioration ; vide ou `None` : consigne par défaut.
+
+    Returns:
+        Le résultat, avec le détail des changements.
+
+    Raises:
+        GeneratorError: Si aucun manifeste n'existe ou s'il est d'un autre sujet.
+        ParsingError: Si le modèle ne produit pas une table valide qui
+            respecte les chapitres figés après plusieurs tentatives (rien
+            n'est alors modifié).
+        ProviderError: Si l'appel au modèle échoue définitivement.
+    """
+    state = _load_state_for_subject(output_dir, subject)
+    locked = [s for s in state.sections if s.status == "done"]
+    locked_text = (
+        "\n".join(
+            f"- Chapitre {s.numero} « {s.titre} » — sous-sections : {', '.join(s.sous_sections) or '(aucune)'}"
+            for s in locked
+        )
+        or "(Aucun chapitre n'est encore rédigé : la table des matières est entièrement modifiable.)"
+    )
+    consigne = (instruction or "").strip() or _read_prompt("toc_improve_default_instruction.md").strip()
+    template = string.Template(_read_prompt("toc_improve_instruction.md"))
+    prompt = template.substitute(
+        toc_actuelle=state.toc.model_dump_json(indent=2), consigne=consigne, chapitres_figes=locked_text
+    )
+    messages = [
+        {"role": "system", "content": subject.system_prompt()},
+        {"role": "user", "content": prompt},
+    ]
+    proposal = call_structured(
+        _client(cfg, "model_write"), messages, _toc_preserving_schema(locked), max_attempts=3
+    )
+    new_toc = TocSchema.model_validate(proposal.model_dump())
+    if new_toc == state.toc:
+        return TocImproveResult(state, False, [], [], [], [], None)
+
+    new_state = build_manual_state(new_toc, subject=state.subject)
+    old_by_numero = {s.numero: s for s in state.sections}
+    changed = []
+    for section in new_state.sections:
+        old = old_by_numero.get(section.numero)
+        if old is not None and old.titre == section.titre and old.sous_sections == section.sous_sections:
+            section.status, section.attempts, section.last_verdict = old.status, old.attempts, old.last_verdict
+        else:
+            changed.append(section)
+    kept_keys = {(s.numero, s.titre) for s in new_state.sections}
+    removed = [s for s in state.sections if (s.numero, s.titre) not in kept_keys]
+    new_filenames = {s.filename for s in new_state.sections}
+    orphan_files = [s.filename for s in state.sections if s.filename not in new_filenames and (output_dir / s.filename).is_file()]
+    new_titles = {partie.titre for partie in new_toc.parties}
+    orphan_criteria = [title for title in subject.requirements()["parties"] if title not in new_titles]
+
+    history_dir = _archive_toc(output_dir)
+    save_state(output_dir, new_state)
+    _write_toc_markdown(output_dir, new_state)
+    return TocImproveResult(new_state, True, changed, removed, orphan_files, orphan_criteria, history_dir)
 
 
 def run_write(
