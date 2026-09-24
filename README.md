@@ -1,5 +1,7 @@
 # ai_manual
 
+![ai_manual : un robot présente « The Basics of Prompt Engineering » sur un tableau](assets/social-preview.jpg)
+
 `ai_manual` est un outil en ligne de commande (`manual`) qui **rédige de bout en bout un manuel de référence complet** en orchestrant plusieurs appels à des modèles de langage (LLM). La version fournie produit un manuel de *Prompt Engineering* en français, du niveau débutant au niveau expert. Changer le sujet consiste à modifier les prompts.
 
 ## Sommaire
