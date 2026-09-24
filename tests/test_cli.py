@@ -7,6 +7,34 @@ from manual_cli.config import ConfigError
 from manual_cli.schemas import Chapitre, Partie, TocSchema
 from manual_cli.state import build_manual_state
 
+SUBJECT_SPEC = """\
+titre: Sujet de test
+langue: français
+role: Tu es un expert.
+objectif: Écrire un manuel.
+public: débutants
+niveau: débutant
+ton: clair
+plan_directeur: a → b
+"""
+
+
+def add_subject(root, slug, spec=SUBJECT_SPEC):
+    directory = root / slug
+    directory.mkdir(parents=True)
+    (directory / "subject.yml").write_text(spec, encoding="utf-8")
+    return directory
+
+
+@pytest.fixture(autouse=True)
+def subjects_dir(tmp_path, monkeypatch):
+    """Isole les tests du dossier `subjects/` réel et des sorties par défaut."""
+    root = tmp_path / "_subjects"
+    add_subject(root, "test-sujet")
+    monkeypatch.setattr(cli, "SUBJECTS_DIR", root)
+    monkeypatch.setattr(cli, "DEFAULT_OUTPUT_ROOT", tmp_path / "_output")
+    return root
+
 
 def make_manual_state():
     toc = TocSchema(
@@ -20,7 +48,7 @@ def test_cmd_init_skips_when_state_exists_without_force(tmp_path, monkeypatch, c
     monkeypatch.setattr(cli, "state_exists", lambda output_dir: True)
     called = {"generate_toc": False}
     monkeypatch.setattr(
-        cli, "generate_toc", lambda cfg, out: called.__setitem__("generate_toc", True) or make_manual_state()
+        cli, "generate_toc", lambda cfg, out, subject: called.__setitem__("generate_toc", True) or make_manual_state()
     )
 
     rc = cli.main(["--output", str(tmp_path), "init"])
@@ -34,7 +62,7 @@ def test_cmd_init_generates_toc(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "state_exists", lambda output_dir: False)
     monkeypatch.setattr(cli, "load_config", lambda: object())
     state = make_manual_state()
-    monkeypatch.setattr(cli, "generate_toc", lambda cfg, out: state)
+    monkeypatch.setattr(cli, "generate_toc", lambda cfg, out, subject: state)
 
     rc = cli.main(["--output", str(tmp_path), "init"])
 
@@ -47,7 +75,7 @@ def test_cmd_init_force_regenerates_even_if_state_exists(tmp_path, monkeypatch, 
     monkeypatch.setattr(cli, "state_exists", lambda output_dir: True)
     monkeypatch.setattr(cli, "load_config", lambda: object())
     state = make_manual_state()
-    monkeypatch.setattr(cli, "generate_toc", lambda cfg, out: state)
+    monkeypatch.setattr(cli, "generate_toc", lambda cfg, out, subject: state)
 
     rc = cli.main(["--output", str(tmp_path), "init", "--force"])
 
@@ -59,7 +87,7 @@ def test_cmd_write_reports_results(tmp_path, monkeypatch, capsys):
     section = make_manual_state().sections[0]
     section.status = "done"
     section.attempts = 1
-    monkeypatch.setattr(cli, "run_write", lambda cfg, out, only_numeros, max_rewrite, workers: [section])
+    monkeypatch.setattr(cli, "run_write", lambda cfg, out, subject, only_numeros, max_rewrite, workers: [section])
 
     rc = cli.main(["--output", str(tmp_path), "write"])
 
@@ -72,7 +100,7 @@ def test_cmd_write_reports_section_needing_review(tmp_path, monkeypatch, capsys)
     section = make_manual_state().sections[0]
     section.status = "failed"
     section.attempts = 3
-    monkeypatch.setattr(cli, "run_write", lambda cfg, out, only_numeros, max_rewrite, workers: [section])
+    monkeypatch.setattr(cli, "run_write", lambda cfg, out, subject, only_numeros, max_rewrite, workers: [section])
 
     rc = cli.main(["--output", str(tmp_path), "write"])
 
@@ -82,7 +110,7 @@ def test_cmd_write_reports_section_needing_review(tmp_path, monkeypatch, capsys)
 
 def test_cmd_write_no_pending_sections(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "load_config", lambda: object())
-    monkeypatch.setattr(cli, "run_write", lambda cfg, out, only_numeros, max_rewrite, workers: [])
+    monkeypatch.setattr(cli, "run_write", lambda cfg, out, subject, only_numeros, max_rewrite, workers: [])
 
     rc = cli.main(["--output", str(tmp_path), "write"])
 
@@ -94,7 +122,7 @@ def test_cmd_write_passes_none_when_no_section_flag(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "load_config", lambda: object())
     received = {}
 
-    def fake_run_write(cfg, out, only_numeros, max_rewrite, workers):
+    def fake_run_write(cfg, out, subject, only_numeros, max_rewrite, workers):
         received["only_numeros"] = only_numeros
         received["max_rewrite"] = max_rewrite
         received["workers"] = workers
@@ -113,7 +141,7 @@ def test_cmd_write_parses_enumeration_and_ranges_via_short_flag(tmp_path, monkey
     monkeypatch.setattr(cli, "load_config", lambda: object())
     received = {}
 
-    def fake_run_write(cfg, out, only_numeros, max_rewrite, workers):
+    def fake_run_write(cfg, out, subject, only_numeros, max_rewrite, workers):
         received["only_numeros"] = only_numeros
         received["workers"] = workers
         return []
@@ -162,7 +190,7 @@ def test_cmd_redo_reports_results(tmp_path, monkeypatch, capsys):
     section = make_manual_state().sections[0]
     section.status = "failed"
     section.attempts = 3
-    monkeypatch.setattr(cli, "run_write", lambda cfg, out, only_numeros, max_rewrite, workers: [section])
+    monkeypatch.setattr(cli, "run_write", lambda cfg, out, subject, only_numeros, max_rewrite, workers: [section])
 
     rc = cli.main(["--output", str(tmp_path), "redo", "1"])
 
@@ -174,7 +202,7 @@ def test_cmd_redo_passes_single_numero_and_one_worker(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "load_config", lambda: object())
     received = {}
 
-    def fake_run_write(cfg, out, only_numeros, max_rewrite, workers):
+    def fake_run_write(cfg, out, subject, only_numeros, max_rewrite, workers):
         received["only_numeros"] = only_numeros
         received["workers"] = workers
         return []
@@ -264,7 +292,7 @@ def test_publish_default_includes_image():
 def test_cmd_init_configures_tracing(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "state_exists", lambda output_dir: False)
     monkeypatch.setattr(cli, "load_config", lambda: object())
-    monkeypatch.setattr(cli, "generate_toc", lambda cfg, out: make_manual_state())
+    monkeypatch.setattr(cli, "generate_toc", lambda cfg, out, subject: make_manual_state())
 
     cli.main(["--output", str(tmp_path), "init"])
 
@@ -273,7 +301,7 @@ def test_cmd_init_configures_tracing(tmp_path, monkeypatch):
 
 def test_cmd_write_configures_tracing(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "load_config", lambda: object())
-    monkeypatch.setattr(cli, "run_write", lambda cfg, out, only_numeros, max_rewrite, workers: [])
+    monkeypatch.setattr(cli, "run_write", lambda cfg, out, subject, only_numeros, max_rewrite, workers: [])
 
     cli.main(["--output", str(tmp_path), "write"])
 
@@ -282,7 +310,7 @@ def test_cmd_write_configures_tracing(tmp_path, monkeypatch):
 
 def test_cmd_redo_configures_tracing(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "load_config", lambda: object())
-    monkeypatch.setattr(cli, "run_write", lambda cfg, out, only_numeros, max_rewrite, workers: [])
+    monkeypatch.setattr(cli, "run_write", lambda cfg, out, subject, only_numeros, max_rewrite, workers: [])
 
     cli.main(["--output", str(tmp_path), "redo", "1"])
 
@@ -393,3 +421,212 @@ def test_redo_parses_numero_positional():
     args = parser.parse_args(["redo", "3"])
     assert args.numero == 3
     assert args.func is cli.cmd_redo
+
+
+# --- sujets ---------------------------------------------------------------------
+
+
+def test_init_passes_the_loaded_subject_to_generate_toc(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    received = {}
+
+    def fake_generate_toc(cfg, out, subject):
+        received["subject"] = subject
+        return make_manual_state()
+
+    monkeypatch.setattr(cli, "generate_toc", fake_generate_toc)
+
+    rc = cli.main(["--output", str(tmp_path / "out"), "init"])
+
+    assert rc == 0
+    assert received["subject"].slug == "test-sujet"
+    assert received["subject"].titre == "Sujet de test"
+
+
+def test_write_passes_the_loaded_subject_to_run_write(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    received = {}
+
+    def fake_run_write(cfg, out, subject, only_numeros, max_rewrite, workers):
+        received["slug"] = subject.slug
+        return []
+
+    monkeypatch.setattr(cli, "run_write", fake_run_write)
+
+    cli.main(["--output", str(tmp_path), "write"])
+
+    assert received["slug"] == "test-sujet"
+
+
+def test_default_output_directory_depends_on_the_subject(tmp_path, subjects_dir, monkeypatch):
+    add_subject(subjects_dir, "autre")
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    received = {}
+
+    def fake_generate_toc(cfg, out, subject):
+        received["out"] = out
+        return make_manual_state()
+
+    monkeypatch.setattr(cli, "generate_toc", fake_generate_toc)
+    monkeypatch.setattr(cli, "state_exists", lambda output_dir: False)
+
+    cli.main(["--subject", "autre", "init"])
+
+    assert received["out"] == tmp_path / "_output" / "autre"
+
+
+def test_explicit_output_overrides_the_subject_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    received = {}
+
+    def fake_generate_toc(cfg, out, subject):
+        received["out"] = out
+        return make_manual_state()
+
+    monkeypatch.setattr(cli, "generate_toc", fake_generate_toc)
+
+    cli.main(["--output", str(tmp_path / "ailleurs"), "init"])
+
+    assert received["out"] == tmp_path / "ailleurs"
+
+
+def test_unknown_subject_is_reported_as_error(capsys):
+    rc = cli.main(["--subject", "nope", "init"])
+
+    assert rc == 1
+    assert "Sujet inconnu" in capsys.readouterr().err
+
+
+def test_several_subjects_require_an_explicit_choice(subjects_dir, capsys):
+    add_subject(subjects_dir, "autre")
+
+    rc = cli.main(["init"])
+
+    assert rc == 1
+    assert "--subject" in capsys.readouterr().err
+
+
+def test_status_uses_the_default_directory_of_the_only_subject(tmp_path, monkeypatch, capsys):
+    seen = {}
+
+    def fake_state_exists(output_dir):
+        seen["out"] = output_dir
+        return False
+
+    monkeypatch.setattr(cli, "state_exists", fake_state_exists)
+
+    rc = cli.main(["status"])
+
+    assert rc == 1
+    assert seen["out"] == tmp_path / "_output" / "test-sujet"
+
+
+def test_status_with_explicit_output_does_not_need_a_subject(tmp_path, subjects_dir, monkeypatch):
+    add_subject(subjects_dir, "autre")
+    monkeypatch.setattr(cli, "state_exists", lambda output_dir: False)
+
+    assert cli.main(["--output", str(tmp_path), "status"]) == 1
+
+
+def test_publish_and_traces_use_the_subject_default_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    seen = {}
+
+    def fake_publish_section(cfg, out, numero, generate_image):
+        seen["publish"] = out
+        return out / "publish" / "x"
+
+    monkeypatch.setattr(cli, "publish_section", fake_publish_section)
+
+    class FakeApp:
+        def run(self, *, host, port):
+            pass
+
+    monkeypatch.setattr(cli, "create_app", lambda trace_path: seen.__setitem__("traces", trace_path) or FakeApp())
+
+    cli.main(["publish", "1"])
+    cli.main(["traces"])
+
+    expected = tmp_path / "_output" / "test-sujet"
+    assert seen["publish"] == expected
+    assert seen["traces"] == expected / "traces" / "calls.jsonl"
+
+
+def test_subject_list_shows_titles_and_flags_invalid_subjects(subjects_dir, capsys):
+    add_subject(subjects_dir, "casse", spec="titre: seulement un titre\n")
+
+    rc = cli.main(["subject", "list"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "test-sujet" in out and "Sujet de test" in out
+    assert "casse" in out and "INVALIDE" in out
+
+
+def test_subject_list_without_subjects(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "SUBJECTS_DIR", tmp_path / "vide")
+
+    rc = cli.main(["subject", "list"])
+
+    assert rc == 0
+    assert "Aucun sujet" in capsys.readouterr().out
+
+
+def test_subject_new_creates_a_skeleton_and_explains_next_steps(subjects_dir, capsys):
+    rc = cli.main(["subject", "new", "cyber"])
+
+    assert rc == 0
+    assert (subjects_dir / "cyber" / "subject.yml").is_file()
+    out = capsys.readouterr().out
+    assert "subject.yml" in out
+    assert "manual subject check cyber" in out
+
+
+def test_subject_new_rejects_existing_subject(capsys):
+    rc = cli.main(["subject", "new", "test-sujet"])
+
+    assert rc == 1
+    assert "existe déjà" in capsys.readouterr().err
+
+
+def test_subject_check_summarises_a_valid_subject(capsys):
+    rc = cli.main(["subject", "check", "test-sujet"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "test-sujet" in out
+    assert "critères" in out
+    assert "SYSTEM" not in out
+
+
+def test_subject_check_defaults_to_the_only_subject(capsys):
+    assert cli.main(["subject", "check"]) == 0
+
+
+def test_subject_check_show_prints_the_rendered_prompts(capsys):
+    rc = cli.main(["subject", "check", "test-sujet", "--show"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Prompt système" in out
+    assert "Tu es un expert." in out
+    assert "Instruction de plan" in out
+    assert "a → b" in out
+
+
+def test_subject_check_reports_an_incomplete_subject(subjects_dir, capsys):
+    scaffold = subjects_dir / "brouillon"
+    scaffold.mkdir()
+    (scaffold / "subject.yml").write_text(SUBJECT_SPEC.replace("clair", "À COMPLÉTER"), encoding="utf-8")
+
+    rc = cli.main(["subject", "check", "brouillon"])
+
+    assert rc == 1
+    assert "À COMPLÉTER" in capsys.readouterr().err
+
+
+def test_subject_requires_an_action():
+    parser = cli.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["subject"])
+

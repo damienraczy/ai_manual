@@ -71,11 +71,15 @@ class ManualState(BaseModel):
         titre_manuel: Titre général du manuel.
         toc: Table des matières d'origine, telle que validée par le schéma.
         sections: Suivi d'avancement de chaque chapitre, trié par numéro.
+        subject: Identifiant du sujet dont les prompts et critères ont servi à
+            générer la table des matières. `None` pour un manifeste antérieur
+            à la gestion des sujets.
     """
 
     titre_manuel: str
     toc: TocSchema
     sections: list[SectionState]
+    subject: str | None = None
 
     def section_by_numero(self, numero: int) -> SectionState:
         """Retrouve une section par son numéro de chapitre.
@@ -95,11 +99,12 @@ class ManualState(BaseModel):
         raise KeyError(f"Section {numero} introuvable.")
 
 
-def build_manual_state(toc: TocSchema) -> ManualState:
+def build_manual_state(toc: TocSchema, subject: str | None = None) -> ManualState:
     """Aplati une table des matières en état de suivi par section.
 
     Args:
         toc: Table des matières générée par le LLM rédacteur.
+        subject: Identifiant du sujet à mémoriser dans le manifeste.
 
     Returns:
         Un `ManualState` avec une `SectionState` par chapitre (statut
@@ -122,7 +127,7 @@ def build_manual_state(toc: TocSchema) -> ManualState:
                 )
             )
     sections.sort(key=lambda s: s.numero)
-    return ManualState(titre_manuel=toc.titre_manuel, toc=toc, sections=sections)
+    return ManualState(titre_manuel=toc.titre_manuel, toc=toc, sections=sections, subject=subject)
 
 
 def manifest_path(output_dir: Path) -> Path:

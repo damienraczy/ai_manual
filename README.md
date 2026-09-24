@@ -12,7 +12,7 @@
 - [Configuration](#configuration)
 - [Utilisation](#utilisation)
 - [Fichiers produits](#fichiers-produits)
-- [Adapter le manuel à un autre sujet](#adapter-le-manuel-à-un-autre-sujet)
+- [Sujets : écrire sur un autre thème](#sujets--écrire-sur-un-autre-thème)
 - [Publication LinkedIn (optionnelle)](#publication-linkedin-optionnelle)
 - [Tests](#tests)
 - [Structure du dépôt](#structure-du-dépôt)
@@ -23,7 +23,7 @@
 
 1. **Plan.** Un premier LLM propose une table des matières complète (parties, chapitres, sous-sections), enregistrée dans `00_toc.md` et dans un fichier d'état `manifest.json`.
 2. **Rédaction.** Chaque chapitre est écrit un par un, en suivant strictement le plan. Plusieurs chapitres peuvent être rédigés en parallèle.
-3. **Relecture automatique.** Un second LLM (le « juge ») évalue chaque chapitre selon des critères de qualité définis dans `requirements/requirements.yml` (définitions claires, exemples concrets, avantages et limites, cohérence avec le plan, etc.). Si un critère bloquant n'est pas rempli, un troisième rôle (le « réécrivain ») corrige le chapitre, qui est rejugé, dans la limite de `--max-rewrite` cycles.
+3. **Relecture automatique.** Un second LLM (le « juge ») évalue chaque chapitre selon des critères de qualité communs (`requirements/requirements.yml`) et propres au sujet (définitions claires, exemples concrets, avantages et limites, cohérence avec le plan, etc.). Si un critère bloquant n'est pas rempli, un troisième rôle (le « réécrivain ») corrige le chapitre, qui est rejugé, dans la limite de `--max-rewrite` cycles.
 4. **Mémoire.** Après chaque chapitre accepté, un résumé cumulé de ce qui a déjà été couvert (`memory.md`) est transmis aux rédactions suivantes, pour éviter les contradictions et les redites.
 5. **Reprise.** L'avancement est sauvegardé chapitre par chapitre : on peut interrompre, relancer, cibler certains chapitres ou en refaire un seul sans tout recommencer.
 
@@ -50,7 +50,7 @@ pip install -e ".[web]"          # programme + interface web des traces
 # pip install -e ".[test,web]"   # idem, avec les outils de test
 ```
 
-L'installation en mode éditable (`-e`) est nécessaire : le programme lit les dossiers `prompts/` et `requirements/` du dépôt à l'exécution. Elle crée la commande `manual` dans le venv ; sans activer le venv, on peut aussi lancer `.venv/bin/python -m manual_cli.cli <commande>`.
+L'installation en mode éditable (`-e`) est nécessaire : le programme lit les dossiers `prompts/`, `requirements/` et `subjects/` du dépôt à l'exécution. Elle crée la commande `manual` dans le venv ; sans activer le venv, on peut aussi lancer `.venv/bin/python -m manual_cli.cli <commande>`.
 
 ## Configuration
 
@@ -103,12 +103,15 @@ Seul le bloc nommé exactement `llm_config` est lu. Les autres blocs (`FASTllm_c
 
 ## Utilisation
 
-Toutes les commandes acceptent `--output DIR` avant la sous-commande pour choisir le répertoire de sortie (défaut : `output/manual/` dans le dépôt).
+Deux options se placent avant la sous-commande :
+
+- `--subject SUJET` choisit le sujet du manuel (un dossier de `subjects/`, voir [Sujets](#sujets--écrire-sur-un-autre-thème)). Facultatif tant qu'il n'existe qu'un seul sujet.
+- `--output DIR` choisit le répertoire de sortie (défaut : `output/<sujet>/` dans le dépôt).
 
 ```bash
-manual init                      # 1. génère la table des matières
-manual write                     # 2. rédige toutes les sections en attente
-manual status                    # 3. affiche l'avancement
+manual --subject prompt-engineering init   # 1. génère la table des matières
+manual --subject prompt-engineering write  # 2. rédige toutes les sections en attente
+manual --subject prompt-engineering status # 3. affiche l'avancement
 ```
 
 | Commande | Effet |
@@ -122,50 +125,78 @@ manual status                    # 3. affiche l'avancement
 | `manual redo 7 [--max-rewrite N]` | Régénère la section 7 depuis zéro. |
 | `manual publish 1 [--no-image]` | Prépare le paquet de publication LinkedIn de la section 1 (voir plus bas). |
 | `manual traces [--host H] [--port P]` | Lance l'interface web (défaut : `127.0.0.1:8787`) sur le journal des appels LLM. |
+| `manual subject list` | Liste les sujets disponibles (un sujet incomplet est signalé `INVALIDE`). |
+| `manual subject new SLUG` | Crée le squelette d'un nouveau sujet à remplir. |
+| `manual subject check [SLUG] [--show]` | Valide un sujet ; `--show` affiche les prompts tels qu'ils seront envoyés. |
 
 Flux de travail habituel :
 
-1. `manual init`, puis relire `output/manual/00_toc.md` ; relancer `manual init --force` tant que le plan ne convient pas.
+1. `manual init`, puis relire `output/<sujet>/00_toc.md` ; relancer `manual init --force` tant que le plan ne convient pas.
 2. `manual write` ; en cas d'interruption, relancer la même commande : les sections terminées sont conservées.
 3. `manual status` pour repérer les sections « à revoir », puis `manual redo N` pour celles qui ne conviennent pas.
 
 ### Suivi des appels LLM
 
-Chaque appel (réussi ou non) est journalisé dans `output/manual/traces/calls.jsonl`. `manual traces` propose une interface web locale pour les parcourir, ce qui aide à diagnostiquer les délais d'attente (timeouts) ou les lenteurs d'un modèle. Elle nécessite l'extra `web` (Flask).
+Chaque appel (réussi ou non) est journalisé dans `output/<sujet>/traces/calls.jsonl`. `manual traces` propose une interface web locale pour les parcourir, ce qui aide à diagnostiquer les délais d'attente (timeouts) ou les lenteurs d'un modèle. Elle nécessite l'extra `web` (Flask).
 
 ## Fichiers produits
 
-Dans le répertoire de sortie (`output/manual/` par défaut) :
+Dans le répertoire de sortie (`output/<sujet>/` par défaut) :
 
 | Fichier | Contenu |
 |---|---|
 | `00_toc.md` | La table des matières générée |
 | `NN_titre-du-chapitre.md` | Un fichier Markdown par chapitre |
-| `manifest.json` | L'état de chaque section (statut, nombre de tentatives) |
+| `manifest.json` | L'état de chaque section (statut, nombre de tentatives) et le sujet utilisé |
 | `memory.md` | Le résumé cumulé transmis aux rédactions suivantes |
 | `traces/calls.jsonl` | Le journal de tous les appels LLM |
 | `publish/<chapitre>/` | Les paquets de publication LinkedIn |
 
-## Adapter le manuel à un autre sujet
+## Sujets : écrire sur un autre thème
 
-Tout le texte envoyé aux modèles est dans `prompts/` ; le sujet, le niveau, le public et le ton sont définis dans `prompts/system_prompt.md`.
+Un **sujet** est un dossier `subjects/<identifiant>/` qui décrit de quoi parle le manuel. Le dépôt fournit `subjects/prompt-engineering/`. Les règles de forme communes à tous les sujets (format JSON du plan, marqueur de fin de section, consignes de relecture) restent dans `prompts/` et ne se touchent pas.
 
-| Fichier | Rôle |
-|---|---|
-| `system_prompt.md` | Identité de l'auteur, sujet, public, exigences de contenu |
-| `toc_instruction.md` | Consigne de génération de la table des matières (format JSON strict) |
-| `section_instruction.md` | Consigne de rédaction d'un chapitre |
-| `judge_instruction.md` | Consigne de relecture |
-| `rewrite_instruction.md` | Consigne de réécriture |
-| `linkedin_post_instruction.md` | Consigne du brouillon de post LinkedIn |
+### Créer un sujet
 
-Les prompts utilisent la syntaxe `string.Template` (`$variable`, et non `{variable}`) : ne pas renommer ni supprimer un placeholder. Le test `tests/test_prompts_integrity.py` détecte ce genre d'erreur.
+```bash
+manual subject new cybersecurite-dirigeants     # crée le squelette
+# → remplir subjects/cybersecurite-dirigeants/subject.yml
+manual subject check cybersecurite-dirigeants   # valide ; --show affiche les prompts
+manual --subject cybersecurite-dirigeants init  # génère la table des matières
+manual --subject cybersecurite-dirigeants write
+```
 
-Les critères de qualité (génériques et par partie) se règlent dans `requirements/requirements.yml` : chaque critère est `bloquant` (force une réécriture) ou `recommande` (signalé sans bloquer).
+Un identifiant ne contient que des minuscules, des chiffres et des tirets. Le squelette est refusé tant qu'un champ vaut « À COMPLÉTER ».
+
+### Le fichier `subject.yml`
+
+| Champ | Rôle | Obligatoire |
+|---|---|---|
+| `titre` | Titre du sujet | oui |
+| `langue` | Langue de rédaction | oui |
+| `role` | Personnage de l'auteur (expertise, références) | oui |
+| `objectif` | Ce que le manuel doit apporter | oui |
+| `public` | Lecteurs visés | oui |
+| `niveau` | Niveau atteint (ex. « débutant → expert ») | oui |
+| `ton` | Ton de la rédaction | oui |
+| `plan_directeur` | Progression attendue des grandes parties, séparées par des flèches | oui |
+| `exclusions` | Liste des sujets à ne pas traiter | non |
+| `instructions` | Consignes libres supplémentaires (sources, exemples attendus, style) | non |
+
+Ces champs sont injectés dans le prompt système (`prompts/system_prompt.md`) et dans l'instruction de plan (`prompts/toc_instruction.md`). Un champ inconnu ou manquant est refusé avec un message explicite.
+
+### Aller plus loin (facultatif)
+
+Dans le dossier du sujet :
+
+- `system_prompt.md` et/ou `toc_instruction.md` : remplacent entièrement le gabarit générique correspondant, pour un contrôle total. Ils sont alors envoyés tels quels : c'est à vous de conserver le format de sortie (schéma JSON du plan, etc.).
+- `requirements.yml` : ajoute des critères de relecture à ceux, communs, de `requirements/requirements.yml`. Deux blocs possibles : `generic` (toutes les sections) et `parties` (par grande partie, la clé étant le titre exact de la partie dans la table des matières générée). Chaque critère a un `id` unique, une `description` et une `severity` : `bloquant` (force une réécriture) ou `recommande` (signalé sans bloquer).
+
+Les autres prompts (`section_instruction.md`, `judge_instruction.md`, `rewrite_instruction.md`, `linkedin_post_instruction.md`) sont communs à tous les sujets. Ils utilisent la syntaxe `string.Template` (`$variable`, et non `{variable}`) : ne pas renommer ni supprimer un placeholder. Le test `tests/test_prompts_integrity.py` détecte ce genre d'erreur.
 
 ## Publication LinkedIn (optionnelle)
 
-`manual publish N` prépare, pour un chapitre terminé, un paquet dans `output/manual/publish/<chapitre>/` :
+`manual publish N` prépare, pour un chapitre terminé, un paquet dans `output/<sujet>/publish/<chapitre>/` :
 
 - `article.html` : le chapitre en HTML autonome, à ouvrir dans un navigateur puis à copier-coller dans l'éditeur d'article LinkedIn (qui ne comprend pas le Markdown brut mais conserve la mise en forme du HTML copié) ;
 - `post.txt` : un brouillon de post, terminé par le jeton `{ARTICLE_URL}` à remplacer par le lien de l'article ;
@@ -187,9 +218,10 @@ Le projet suit un développement piloté par les tests (RED → GREEN → REFACT
 
 ```
 manual_cli/            code source (CLI, génération, fournisseurs, traces, interface web)
-prompts/               prompts envoyés aux modèles
+prompts/               gabarits de prompts communs à tous les sujets
+subjects/              un dossier par sujet de manuel (subject.yml, critères propres)
 assets/                image de prévisualisation sociale (1280x640)
-requirements/          critères de qualité utilisés par le juge
+requirements/          critères de qualité communs utilisés par le juge
 tests/                 suite de tests
 params.example.yml     modèle de configuration à copier en params.yml
 pyproject.toml         packaging et configuration des tests

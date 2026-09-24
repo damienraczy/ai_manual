@@ -88,3 +88,14 @@ def test_section_by_numero_found_and_missing():
     assert state.section_by_numero(2).titre == "Anatomie"
     with pytest.raises(KeyError):
         state.section_by_numero(999)
+
+
+def test_subject_is_recorded_and_survives_a_round_trip(tmp_path):
+    toc = TocSchema(
+        titre_manuel="M",
+        parties=[Partie(numero="I", titre="P", chapitres=[Chapitre(numero=1, titre="Un", description="d", sous_sections=[])])],
+    )
+    save_state(tmp_path, build_manual_state(toc, subject="cyber"))
+
+    assert load_state(tmp_path).subject == "cyber"
+    assert build_manual_state(toc).subject is None

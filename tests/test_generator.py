@@ -106,11 +106,11 @@ def test_client_builds_ollama_cloud_client_from_role(cfg):
 # --- generate_toc ---------------------------------------------------------
 
 
-def test_generate_toc_creates_state_and_files(tmp_path, cfg, monkeypatch):
+def test_generate_toc_creates_state_and_files(tmp_path, cfg, subject, monkeypatch):
     fake = FakeClients({"model_write": [TOC_JSON]})
     patch_clients(monkeypatch, fake)
 
-    state = generator.generate_toc(cfg, tmp_path)
+    state = generator.generate_toc(cfg, tmp_path, subject)
 
     assert state.titre_manuel == "M"
     assert [s.titre for s in state.sections] == ["Intro"]
@@ -121,15 +121,28 @@ def test_generate_toc_creates_state_and_files(tmp_path, cfg, monkeypatch):
     assert (tmp_path / "memory.md").read_text(encoding="utf-8") == INITIAL_DIGEST
 
 
-def test_generate_toc_markdown_contains_chapter_and_subsection(tmp_path, cfg, monkeypatch):
+def test_generate_toc_markdown_contains_chapter_and_subsection(tmp_path, cfg, subject, monkeypatch):
     fake = FakeClients({"model_write": [TOC_JSON]})
     patch_clients(monkeypatch, fake)
 
-    generator.generate_toc(cfg, tmp_path)
+    generator.generate_toc(cfg, tmp_path, subject)
 
     toc_md = (tmp_path / "00_toc.md").read_text(encoding="utf-8")
     assert "1. Intro" in toc_md
     assert "1.1 Def" in toc_md
+
+
+def test_generate_toc_uses_the_subject_prompts_and_records_the_subject(tmp_path, cfg, subject, monkeypatch):
+    fake = FakeClients({"model_write": [TOC_JSON]})
+    patch_clients(monkeypatch, fake)
+
+    state = generator.generate_toc(cfg, tmp_path, subject)
+
+    messages = fake.calls["model_write"][0]
+    assert messages[0] == {"role": "system", "content": "SYSTEM DU SUJET"}
+    assert messages[1] == {"role": "user", "content": "PLAN DU SUJET"}
+    assert state.subject == "test-sujet"
+    assert load_state(tmp_path).subject == "test-sujet"
 
 
 # --- _strip_end_marker -----------------------------------------------------
@@ -213,7 +226,7 @@ def test_write_section_accepts_on_first_try(tmp_path, cfg, monkeypatch):
     )
     patch_clients(monkeypatch, fake)
 
-    result = generator.write_section(cfg, tmp_path, state, section, REQUIREMENTS)
+    result = generator.write_section(cfg, tmp_path, state, section, REQUIREMENTS, system_prompt="SYS")
 
     assert result.status == "done"
     assert result.attempts == 1
@@ -239,7 +252,7 @@ def test_write_section_rewrites_once_then_accepts(tmp_path, cfg, monkeypatch):
     )
     patch_clients(monkeypatch, fake)
 
-    result = generator.write_section(cfg, tmp_path, state, section, REQUIREMENTS, max_rewrite=2)
+    result = generator.write_section(cfg, tmp_path, state, section, REQUIREMENTS, system_prompt="SYS", max_rewrite=2)
 
     assert result.status == "done"
     assert result.attempts == 2
@@ -261,7 +274,7 @@ def test_write_section_marks_failed_after_exhausting_rewrites(tmp_path, cfg, mon
     )
     patch_clients(monkeypatch, fake)
 
-    result = generator.write_section(cfg, tmp_path, state, section, REQUIREMENTS, max_rewrite=2)
+    result = generator.write_section(cfg, tmp_path, state, section, REQUIREMENTS, system_prompt="SYS", max_rewrite=2)
 
     assert result.status == "failed"
     assert result.attempts == 3
@@ -283,7 +296,7 @@ def test_write_section_fails_if_marker_missing_even_when_judge_accepts(tmp_path,
     )
     patch_clients(monkeypatch, fake)
 
-    result = generator.write_section(cfg, tmp_path, state, section, REQUIREMENTS)
+    result = generator.write_section(cfg, tmp_path, state, section, REQUIREMENTS, system_prompt="SYS")
 
     assert result.status == "failed"
     assert "marqueur de fin manquant" in result.last_verdict
@@ -292,12 +305,12 @@ def test_write_section_fails_if_marker_missing_even_when_judge_accepts(tmp_path,
 # --- run_write ---------------------------------------------------------------
 
 
-def test_run_write_raises_without_manifest(tmp_path, cfg):
+def test_run_write_raises_without_manifest(tmp_path, cfg, subject):
     with pytest.raises(generator.GeneratorError):
-        generator.run_write(cfg, tmp_path)
+        generator.run_write(cfg, tmp_path, subject)
 
 
-def test_run_write_only_processes_pending_sections(tmp_path, cfg, monkeypatch):
+def test_run_write_only_processes_pending_sections(tmp_path, cfg, subject, monkeypatch):
     toc = TocSchema(
         titre_manuel="M",
         parties=[
@@ -315,8 +328,6 @@ def test_run_write_only_processes_pending_sections(tmp_path, cfg, monkeypatch):
     state.sections[0].status = "done"
     save_state(tmp_path, state)
 
-    monkeypatch.setattr(generator, "load_requirements", lambda: REQUIREMENTS)
-
     text2 = good_section_text(2)
     fake = FakeClients(
         {
@@ -328,12 +339,12 @@ def test_run_write_only_processes_pending_sections(tmp_path, cfg, monkeypatch):
     )
     patch_clients(monkeypatch, fake)
 
-    results = generator.run_write(cfg, tmp_path)
+    results = generator.run_write(cfg, tmp_path, subject)
 
     assert [s.numero for s in results] == [2]
 
 
-def test_run_write_with_only_numeros_single(tmp_path, cfg, monkeypatch):
+def test_run_write_with_only_numeros_single(tmp_path, cfg, subject, monkeypatch):
     toc = TocSchema(
         titre_manuel="M",
         parties=[
@@ -349,8 +360,6 @@ def test_run_write_with_only_numeros_single(tmp_path, cfg, monkeypatch):
     )
     state = build_manual_state(toc)
     save_state(tmp_path, state)
-    monkeypatch.setattr(generator, "load_requirements", lambda: REQUIREMENTS)
-
     text1 = good_section_text(1)
     fake = FakeClients(
         {
@@ -362,12 +371,12 @@ def test_run_write_with_only_numeros_single(tmp_path, cfg, monkeypatch):
     )
     patch_clients(monkeypatch, fake)
 
-    results = generator.run_write(cfg, tmp_path, only_numeros=[1])
+    results = generator.run_write(cfg, tmp_path, subject, only_numeros=[1])
 
     assert [s.numero for s in results] == [1]
 
 
-def test_run_write_returns_empty_list_when_nothing_pending(tmp_path, cfg, monkeypatch):
+def test_run_write_returns_empty_list_when_nothing_pending(tmp_path, cfg, subject, monkeypatch):
     toc = TocSchema(
         titre_manuel="M",
         parties=[
@@ -381,14 +390,12 @@ def test_run_write_returns_empty_list_when_nothing_pending(tmp_path, cfg, monkey
     state = build_manual_state(toc)
     state.sections[0].status = "done"
     save_state(tmp_path, state)
-    monkeypatch.setattr(generator, "load_requirements", lambda: REQUIREMENTS)
-
-    results = generator.run_write(cfg, tmp_path)
+    results = generator.run_write(cfg, tmp_path, subject)
 
     assert results == []
 
 
-def test_run_write_processes_multiple_sections_in_parallel_with_correct_routing(tmp_path, cfg, monkeypatch):
+def test_run_write_processes_multiple_sections_in_parallel_with_correct_routing(tmp_path, cfg, subject, monkeypatch):
     import re
     import threading
 
@@ -406,8 +413,6 @@ def test_run_write_processes_multiple_sections_in_parallel_with_correct_routing(
     )
     state = build_manual_state(toc)
     save_state(tmp_path, state)
-    monkeypatch.setattr(generator, "load_requirements", lambda: REQUIREMENTS)
-
     call_lock = threading.Lock()
     write_calls: list[str] = []
 
@@ -443,7 +448,7 @@ def test_run_write_processes_multiple_sections_in_parallel_with_correct_routing(
     fake = RoutingFakeClients()
     monkeypatch.setattr(generator, "_client", lambda cfg, role: fake.client_for(role))
 
-    results = generator.run_write(cfg, tmp_path, workers=4)
+    results = generator.run_write(cfg, tmp_path, subject, workers=4)
 
     assert [s.numero for s in results] == [1, 2, 3, 4]
     assert all(s.status == "done" for s in results)
@@ -455,3 +460,55 @@ def test_run_write_processes_multiple_sections_in_parallel_with_correct_routing(
     final_digest = (tmp_path / "memory.md").read_text(encoding="utf-8")
     for numero in range(1, 5):
         assert f"S{numero}" in final_digest, f"mise à jour mémoire perdue pour la section {numero}"
+
+
+def test_write_section_sends_the_given_system_prompt_to_the_writer(tmp_path, cfg, monkeypatch):
+    fake = FakeClients(
+        {
+            "model_write": [good_section_text()],
+            "model_judge": [judge_accept_json()],
+            "model_rewriter": [],
+            "model_think": ["ok"],
+        }
+    )
+    patch_clients(monkeypatch, fake)
+    state = make_state()
+
+    generator.write_section(cfg, tmp_path, state, state.sections[0], REQUIREMENTS, system_prompt="SYS DU SUJET")
+
+    assert fake.calls["model_write"][0][0] == {"role": "system", "content": "SYS DU SUJET"}
+
+
+def test_run_write_uses_the_subject_system_prompt_and_requirements(tmp_path, cfg, subject, monkeypatch):
+    save_state(tmp_path, make_state().model_copy(update={"subject": "test-sujet"}))
+    fake = FakeClients(
+        {
+            "model_write": [good_section_text()],
+            "model_judge": [judge_accept_json()],
+            "model_rewriter": [],
+            "model_think": ["ok"],
+        }
+    )
+    patch_clients(monkeypatch, fake)
+
+    generator.run_write(cfg, tmp_path, subject)
+
+    assert fake.calls["model_write"][0][0] == {"role": "system", "content": "SYSTEM DU SUJET"}
+    judge_prompt = fake.calls["model_judge"][0][-1]["content"]
+    assert "marqueur_fin" in judge_prompt
+
+
+def test_run_write_refuses_a_manifest_written_for_another_subject(tmp_path, cfg, subject):
+    save_state(tmp_path, make_state().model_copy(update={"subject": "autre-sujet"}))
+
+    with pytest.raises(generator.GeneratorError, match="autre-sujet.*test-sujet"):
+        generator.run_write(cfg, tmp_path, subject)
+
+
+def test_run_write_accepts_a_legacy_manifest_without_subject(tmp_path, cfg, subject, monkeypatch):
+    state = make_state()
+    state.sections[0].status = "done"
+    save_state(tmp_path, state)
+    assert load_state(tmp_path).subject is None
+
+    assert generator.run_write(cfg, tmp_path, subject) == []

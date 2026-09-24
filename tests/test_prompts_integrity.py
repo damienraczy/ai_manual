@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from string import Template
 
+import yaml
+
 from manual_cli.generator import PROMPTS_DIR
 from manual_cli.requirements_loader import DEFAULT_REQUIREMENTS_PATH, load_requirements
+from manual_cli.subjects import SubjectSpec
 
 PROMPT_FILES = [
     "system_prompt.md",
@@ -38,12 +41,32 @@ def test_rewrite_instruction_placeholders_are_substitutable():
     assert "orig" in result
 
 
-def test_real_requirements_file_loads_and_has_expected_parties():
-    data = load_requirements(DEFAULT_REQUIREMENTS_PATH)
-    assert "generic" in data
-    assert set(data["parties"]) == {
-        "Fondamentaux",
-        "Techniques avancées",
-        "Évaluation et optimisation",
-        "Frontier techniques 2025-2026",
+def test_system_prompt_template_placeholders_are_exactly_the_subject_fields():
+    template = Template((PROMPTS_DIR / "system_prompt.md").read_text(encoding="utf-8"))
+    assert set(template.get_identifiers()) == {
+        "role",
+        "objectif",
+        "public",
+        "niveau",
+        "ton",
+        "langue",
+        "exclusions_section",
+        "instructions_section",
     }
+
+
+def test_toc_instruction_template_only_needs_the_plan_directeur():
+    template = Template((PROMPTS_DIR / "toc_instruction.md").read_text(encoding="utf-8"))
+    assert set(template.get_identifiers()) == {"plan_directeur"}
+
+
+def test_subject_template_lists_every_subject_field():
+    data = yaml.safe_load((PROMPTS_DIR / "subject_template.yml").read_text(encoding="utf-8"))
+    assert set(data) == set(SubjectSpec.model_fields)
+
+
+def test_shared_requirements_are_subject_agnostic():
+    data = load_requirements(DEFAULT_REQUIREMENTS_PATH)
+    assert data["generic"]
+    assert "parties" not in data
+    assert "multi_modeles" not in [c["id"] for c in data["generic"]]

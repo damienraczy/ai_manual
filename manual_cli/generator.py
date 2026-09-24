@@ -21,9 +21,10 @@ from .config import AppConfig
 from .memory import INITIAL_DIGEST, ensure_budget, load_digest, save_digest, update_digest
 from .parsing import call_structured
 from .providers import OllamaCloudClient
-from .requirements_loader import blocking_ids, criteria_for_partie, load_requirements, render_criteria
+from .requirements_loader import blocking_ids, criteria_for_partie, render_criteria
 from .schemas import JudgeVerdict, TocSchema
 from .state import ManualState, SectionState, build_manual_state, load_state, save_state, state_exists
+from .subjects import Subject
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 SECTION_END_TEMPLATE = "--- Fin de la section {numero} — Dis « continue » pour la suivante ---"
@@ -59,16 +60,18 @@ def _client(cfg: AppConfig, role: str) -> OllamaCloudClient:
     return OllamaCloudClient(cfg.role(role), role=role)
 
 
-def generate_toc(cfg: AppConfig, output_dir: Path) -> ManualState:
+def generate_toc(cfg: AppConfig, output_dir: Path, subject: Subject) -> ManualState:
     """Génère la table des matières et initialise l'état du manuel.
 
-    Appelle `model_write` pour produire la TOC au format JSON strict,
-    construit l'état de suivi par section, initialise la mémoire, et écrit
+    Appelle `model_write` avec les prompts du sujet pour produire la TOC au
+    format JSON strict, construit l'état de suivi par section (en y
+    mémorisant l'identifiant du sujet), initialise la mémoire, et écrit
     `00_toc.md` (version lisible) et `manifest.json` (état).
 
     Args:
         cfg: Configuration applicative résolue.
         output_dir: Répertoire de sortie du manuel.
+        subject: Sujet fournissant le prompt système et l'instruction de plan.
 
     Returns:
         L'état initial du manuel, une section par chapitre (statut `"pending"`).
@@ -79,11 +82,11 @@ def generate_toc(cfg: AppConfig, output_dir: Path) -> ManualState:
         ProviderError: Si l'appel au modèle échoue définitivement.
     """
     messages = [
-        {"role": "system", "content": _read_prompt("system_prompt.md")},
-        {"role": "user", "content": _read_prompt("toc_instruction.md")},
+        {"role": "system", "content": subject.system_prompt()},
+        {"role": "user", "content": subject.toc_instruction()},
     ]
     toc = call_structured(_client(cfg, "model_write"), messages, TocSchema, max_attempts=3)
-    state = build_manual_state(toc)
+    state = build_manual_state(toc, subject=subject.slug)
     save_state(output_dir, state)
     save_digest(output_dir, INITIAL_DIGEST)
     _write_toc_markdown(output_dir, state)
@@ -133,13 +136,14 @@ def _strip_end_marker(text: str, numero: int) -> tuple[str, bool]:
     return stripped, False
 
 
-def _draft_section(cfg: AppConfig, section: SectionState, digest: str) -> str:
+def _draft_section(cfg: AppConfig, section: SectionState, digest: str, system_prompt: str) -> str:
     """Demande au modèle rédacteur un premier jet de section.
 
     Args:
         cfg: Configuration applicative résolue.
         section: Section à rédiger (titre, sous-sections, etc.).
         digest: Résumé mémoire du manuel déjà rédigé, pour la cohérence.
+        system_prompt: Prompt système du sujet.
 
     Returns:
         Le texte brut renvoyé par le modèle (marqueur de fin inclus).
@@ -154,7 +158,7 @@ def _draft_section(cfg: AppConfig, section: SectionState, digest: str) -> str:
         digest=digest,
     )
     messages = [
-        {"role": "system", "content": _read_prompt("system_prompt.md")},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": instruction},
     ]
     return _client(cfg, "model_write").chat(messages)
@@ -227,6 +231,7 @@ def write_section(
     requirements: dict,
     max_rewrite: int = 2,
     *,
+    system_prompt: str,
     state_lock: threading.Lock | None = None,
     memory_lock: threading.Lock | None = None,
 ) -> SectionState:
@@ -244,6 +249,7 @@ def write_section(
         section: Section à traiter.
         requirements: Exigences chargées via `requirements_loader.load_requirements`.
         max_rewrite: Nombre maximal de cycles de réécriture après un rejet.
+        system_prompt: Prompt système du sujet, envoyé au rédacteur.
         state_lock: Verrou protégeant l'écriture du manifeste lors d'une
             exécution parallèle (voir `run_write`). `None` en exécution
             séquentielle ou dans les tests unitaires.
@@ -256,7 +262,7 @@ def write_section(
     """
     digest = load_digest(output_dir)
 
-    text = _draft_section(cfg, section, digest)
+    text = _draft_section(cfg, section, digest, system_prompt)
     verdict = _judge_section(cfg, section, text, requirements)
     attempts = 1
 
@@ -291,6 +297,7 @@ def write_section(
 def run_write(
     cfg: AppConfig,
     output_dir: Path,
+    subject: Subject,
     only_numeros: list[int] | None = None,
     max_rewrite: int = 2,
     workers: int = 4,
@@ -301,6 +308,7 @@ def run_write(
         cfg: Configuration applicative résolue.
         output_dir: Répertoire de sortie du manuel (doit déjà contenir un
             manifeste produit par `generate_toc`).
+        subject: Sujet fournissant le prompt système et les critères du juge.
         only_numeros: Numéros de sections à traiter. `None` (par défaut)
             traite toutes les sections dont le statut n'est pas `"done"`.
         max_rewrite: Nombre maximal de cycles de réécriture par section
@@ -313,14 +321,21 @@ def run_write(
         ciblées (indépendamment de leur ordre réel de complétion).
 
     Raises:
-        GeneratorError: Si aucun manifeste n'existe encore dans `output_dir`.
+        GeneratorError: Si aucun manifeste n'existe encore dans `output_dir`,
+            ou s'il a été généré pour un autre sujet que `subject`.
         KeyError: Si `only_numeros` contient un numéro de section inconnu.
     """
     if not state_exists(output_dir):
         raise GeneratorError("Aucune table des matières générée. Lance d'abord `manual init`.")
 
     state = load_state(output_dir)
-    requirements = load_requirements()
+    if state.subject is not None and state.subject != subject.slug:
+        raise GeneratorError(
+            f"Ce manuel a été généré pour le sujet {state.subject!r}, pas {subject.slug!r} "
+            f"(répertoire {output_dir}). Utilise --subject {state.subject} ou un autre --output."
+        )
+    requirements = subject.requirements()
+    system_prompt = subject.system_prompt()
 
     if only_numeros is not None:
         targets = [state.section_by_numero(n) for n in only_numeros]
@@ -339,6 +354,7 @@ def run_write(
         state,
         requirements=requirements,
         max_rewrite=max_rewrite,
+        system_prompt=system_prompt,
         state_lock=state_lock,
         memory_lock=memory_lock,
     )

@@ -1,6 +1,6 @@
 # Tâche : générer la table des matières du manuel
 
-Propose la table des matières complète et détaillée du manuel décrit dans le prompt système. Elle doit couvrir : fondamentaux → techniques intermédiaires → techniques avancées → patterns experts → évaluation & optimisation → applications industrielles → frontier techniques 2025-2026.
+Propose la table des matières complète et détaillée du manuel décrit dans le prompt système. Elle doit suivre cette progression : $plan_directeur.
 
 ## Format de sortie — STRICT
 

@@ -1,6 +1,7 @@
 version: 1
 
-# Critères appliqués à TOUTES les sections.
+# Critères communs à TOUS les sujets et à toutes les sections.
+# Chaque sujet ajoute les siens dans subjects/<sujet>/requirements.yml.
 # severity: "bloquant" force une réécriture si non rempli ; "recommande" est signalé mais n'empêche pas l'acceptation.
 generic:
   - id: definition_claire
@@ -31,10 +32,6 @@ generic:
     description: "La section se termine par la ligne exacte « --- Fin de la section [numéro] — Dis « continue » pour la suivante --- » avec le bon numéro, et rien après."
     severity: bloquant
 
-  - id: multi_modeles
-    description: "Quand c'est pertinent, des remarques ou variations sont données pour plusieurs familles de modèles, pas un seul fournisseur."
-    severity: recommande
-
   - id: tableaux_comparatifs
     description: "Un tableau comparatif ou récapitulatif est présent si la section compare plusieurs techniques ou variantes."
     severity: recommande
@@ -54,27 +51,3 @@ generic:
   - id: pas_de_repetition
     description: "La section n'introduit pas de redite non motivée d'un concept déjà pleinement défini dans une section précédente (se fier au résumé mémoire fourni en contexte)."
     severity: recommande
-
-# Critères additionnels par grande Partie de la table des matières.
-# La clé doit correspondre exactement au champ "titre" de la partie tel que généré dans la TOC
-# (ex. "Fondamentaux", "Techniques intermédiaires", ...). Modifiable/complétable librement.
-parties:
-  Fondamentaux:
-    - id: aucun_prerequis
-      description: "Le chapitre ne suppose aucune connaissance préalable en prompt engineering ; le vocabulaire technique introduit est expliqué au fil du texte."
-      severity: bloquant
-
-  Techniques avancées:
-    - id: tableau_comparatif_techniques
-      description: "Un tableau comparatif explicite des techniques de raisonnement structuré présentées dans le chapitre (ex. CoT, ToT, GoT) est présent."
-      severity: recommande
-
-  Évaluation et optimisation:
-    - id: metriques_chiffrees
-      description: "Les critères d'évaluation ou d'optimisation proposés sont mesurables (métrique nommée, seuil ou méthode de mesure explicite)."
-      severity: recommande
-
-  Frontier techniques 2025-2026:
-    - id: situe_dans_le_temps
-      description: "Les techniques présentées sont explicitement situées dans la période 2025-2026 et distinguées des approches antérieures."
-      severity: recommande

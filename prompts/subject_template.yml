@@ -1,0 +1,40 @@
+# Sujet du manuel : à remplir, puis vérifier avec `manual subject check <identifiant>`.
+# Tout champ encore égal à « À COMPLÉTER » est refusé.
+# Les champs sont injectés dans le prompt système (system_prompt.md) et dans
+# l'instruction de plan (toc_instruction.md). Pour un contrôle total, déposer à côté
+# de ce fichier un system_prompt.md et/ou un toc_instruction.md : ils remplacent alors
+# le gabarit générique.
+
+# Titre du sujet, tel qu'il figurera dans le manuel.
+titre: À COMPLÉTER
+
+# Langue de rédaction.
+langue: À COMPLÉTER
+
+# Personnage de l'auteur : expertise, expérience, références.
+# Exemple : Tu es un expert en X, formateur de niveau Master et auteur de manuels de référence.
+role: À COMPLÉTER
+
+# Ce que le manuel doit apporter (une ou deux phrases).
+objectif: À COMPLÉTER
+
+# Lecteurs visés.
+public: À COMPLÉTER
+
+# Niveau atteint. Exemple : débutant → expert.
+niveau: À COMPLÉTER
+
+# Ton de la rédaction. Exemple : professionnel et accessible.
+ton: À COMPLÉTER
+
+# Progression attendue des grandes parties, séparées par des flèches.
+# Exemple : fondamentaux → techniques intermédiaires → techniques avancées → évaluation.
+plan_directeur: À COMPLÉTER
+
+# Facultatif : sujets à ne pas traiter.
+exclusions: []
+#  - programmation
+#  - juridique
+
+# Facultatif : consignes libres supplémentaires (sources à privilégier, style, exemples attendus...).
+instructions: ""
