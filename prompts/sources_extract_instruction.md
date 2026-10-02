@@ -11,13 +11,13 @@ $contexte
 - `reference` : une source bibliographique (auteur, titre, année, éditeur...) avec son éventuel commentaire.
 - `exemple` : un exemple, un cas, une anecdote.
 - `passage` : un texte déjà rédigé, qu'il faudra reprendre et étoffer.
-- `theme` : un thème ou un angle à traiter, sans contenu développé.
+- `theme` : un thème ou un angle à traiter, sans contenu développé (dès qu'un argument est énoncé, c'est une `idee`).
 
 ## Règles
 
 - `enonce` : l'unité reformulée en une ou deux phrases autonomes, dans la langue du document.
-- `extrait` : un passage **copié mot pour mot** du document (quelques mots à quelques phrases), qui permet de retrouver l'unité. Ne le modifie pas, ne le complète pas : il sera vérifié dans le texte.
-- `utilite` : `haute` si l'unité apporte clairement de la matière au manuel visé ; `moyenne` si elle peut servir ; `nulle` si elle est hors sujet, redondante ou sans valeur (ne l'invente pas : omets-la plutôt).
+- `extrait` : un passage **copié mot pour mot** du document, sans reformulation ni correction (ponctuation, guillemets et accents compris), d'une à deux phrases au plus ; pour une référence, la ligne entière. Il permet de retrouver l'unité et sera vérifié dans le texte : s'il n'y figure pas à l'identique, ta réponse sera refusée.
+- `utilite` : `haute` si l'unité apporte clairement de la matière au manuel visé ; `moyenne` si elle peut servir ; `nulle` si elle ressemble à de la matière mais est hors sujet ou redondante. Un passage sans aucun intérêt (échange personnel, consigne pratique...) ne donne pas d'unité : omets-le.
 - `themes` : un à trois mots-clés courts, pour regrouper les unités entre elles.
 - N'invente rien : chaque unité vient du document. Un document sans intérêt donne une liste vide.
 

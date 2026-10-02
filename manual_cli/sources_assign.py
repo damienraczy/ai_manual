@@ -43,7 +43,8 @@ TYPE_HEADINGS = {
 INTRO = (
     "## Matière fournie par l'auteur (documents de référence)\n\n"
     "Ces éléments viennent de documents fournis par l'auteur : c'est de la matière à exploiter, pas une vérité. "
-    "Reformule, organise, ne recopie pas. Traite chaque élément **À COUVRIR** : ne l'écarte que s'il est hors sujet "
+    "Reformule, organise, ne recopie pas, et intègre-la comme ton propre propos : le texte ne mentionne pas ces documents "
+    "(les références se citent normalement). Traite chaque élément **À COUVRIR** : ne l'écarte que s'il est hors sujet "
     "ou douteux, et dans ce cas ajoute juste avant la ligne de fin une ligne `<!-- écarté [identifiant] : motif -->`. "
     "Les autres éléments sont facultatifs. Ne cite aucune référence qui ne figure pas ici. "
     "Quand deux éléments se contredisent (⚠), présente le débat au lieu de trancher en silence. "

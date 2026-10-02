@@ -49,6 +49,11 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 SECTION_END_TEMPLATE = "--- Fin de la section {numero} — Dis « continue » pour la suivante ---"
 COVERAGE_ID = "couverture_sources"
 DISCARD_RE = re.compile(r"<!--\s*écarté\s*\[([^\]]+)\]\s*:\s*(.*?)\s*-->", re.DOTALL)
+REWRITE_SOURCES_NOTE = (
+    "Si un problème signale un élément de cette matière comme oublié, traite-le à partir d'elle, ou écarte-le "
+    "par une ligne `<!-- écarté [identifiant] : motif -->` placée juste avant la ligne de fin. "
+    "Conserve les lignes `<!-- écarté … -->` déjà présentes."
+)
 
 
 class GeneratorError(Exception):
@@ -311,6 +316,7 @@ def _judge_section(
     requirements: dict,
     *,
     must_cover: list[Unite] = (),
+    system_prompt: str = "",
 ) -> JudgeVerdict:
     """Fait évaluer une section par le modèle juge.
 
@@ -326,6 +332,8 @@ def _judge_section(
         requirements: Exigences chargées via `requirements_loader.load_requirements`.
         must_cover: Unités de matière que le texte doit traiter ou écarter ; ajoute le critère
             bloquant `couverture_sources` si la liste n'est pas vide.
+        system_prompt: Prompt système donné au rédacteur ; montré au juge pour qu'il puisse
+            vérifier le style, la langue et la typographie exigés. Vide : bloc omis.
 
     Returns:
         Le verdict du juge, éventuellement corrigé par le garde-fou local.
@@ -339,9 +347,17 @@ def _judge_section(
     if must_cover:
         criteria = [*criteria, _coverage_criterion(list(must_cover))]
     template = string.Template(_read_prompt("judge_instruction.md"))
+    rules = (
+        f"## Règles de rédaction données au rédacteur\n\n<regles>\n{system_prompt.strip()}\n</regles>"
+        if system_prompt.strip()
+        else ""
+    )
     instruction = template.substitute(
         requirements=render_criteria(criteria),
         section_text=section_text,
+        intitule=section.intitule,
+        sous_sections="\n".join(f"- {label}" for label in _labels(section)) or "(aucune)",
+        regles=rules,
     )
     verdict = call_structured(
         _client(cfg, "model_judge"), [{"role": "user", "content": instruction}], JudgeVerdict, max_attempts=3
@@ -353,7 +369,14 @@ def _judge_section(
     return verdict
 
 
-def _rewrite_section(cfg: AppConfig, section: SectionState, section_text: str, verdict: JudgeVerdict) -> str:
+def _rewrite_section(
+    cfg: AppConfig,
+    section: SectionState,
+    section_text: str,
+    verdict: JudgeVerdict,
+    sources: str = "",
+    system_prompt: str = "",
+) -> str:
     """Demande au modèle réécrivain une version corrigée de la section.
 
     Args:
@@ -361,6 +384,10 @@ def _rewrite_section(cfg: AppConfig, section: SectionState, section_text: str, v
         section: Section concernée (utilisée pour le numéro dans le marqueur de fin).
         section_text: Texte original à corriger.
         verdict: Verdict du juge contenant les problèmes à corriger.
+        sources: Bloc de matière des documents de référence, pour que le réécrivain puisse
+            traiter les éléments signalés comme oubliés ; vide s'il n'y en a pas.
+        system_prompt: Prompt système du sujet (persona, langue, style, typographie) : la version
+            réécrite est souvent la version finale, elle doit suivre les mêmes règles. Vide : omis.
 
     Returns:
         Le texte brut réécrit par le modèle.
@@ -368,8 +395,14 @@ def _rewrite_section(cfg: AppConfig, section: SectionState, section_text: str, v
     issues_text = "\n".join(f"- [{i.severity}] `{i.id}` : {i.detail}" for i in verdict.issues)
     issues_text = issues_text or "(aucun détail fourni)"
     template = string.Template(_read_prompt("rewrite_instruction.md"))
-    instruction = template.substitute(section_text=section_text, issues=issues_text, numero=section.numero)
-    return _client(cfg, "model_rewriter").chat([{"role": "user", "content": instruction}])
+    instruction = template.substitute(
+        section_text=section_text,
+        issues=issues_text,
+        numero=section.numero,
+        sources=f"{sources.strip()}\n\n{REWRITE_SOURCES_NOTE}" if sources.strip() else "",
+    )
+    messages = [{"role": "system", "content": system_prompt}] if system_prompt.strip() else []
+    return _client(cfg, "model_rewriter").chat([*messages, {"role": "user", "content": instruction}])
 
 
 def _draft_and_review(
@@ -407,12 +440,12 @@ def _draft_and_review(
     text = _draft_section(
         cfg, section, digest, plan, system_prompt, existing_text=existing_text, instruction=instruction, sources=sources
     )
-    verdict = _judge_section(cfg, section, text, requirements, must_cover=must_cover)
+    verdict = _judge_section(cfg, section, text, requirements, must_cover=must_cover, system_prompt=system_prompt)
     attempts = 1
 
     while verdict.verdict == "revise" and attempts <= max_rewrite:
-        text = _rewrite_section(cfg, section, text, verdict)
-        verdict = _judge_section(cfg, section, text, requirements, must_cover=must_cover)
+        text = _rewrite_section(cfg, section, text, verdict, sources, system_prompt)
+        verdict = _judge_section(cfg, section, text, requirements, must_cover=must_cover, system_prompt=system_prompt)
         attempts += 1
 
     final_text, marker_ok = _strip_end_marker(text, section.numero)

@@ -398,3 +398,27 @@ def test_consolidation_rejects_a_unit_that_is_its_own_duplicate(subject, tmp_pat
 
     with pytest.raises(ParsingError):
         sources.refresh_index(make_cfg(), subject.directory, tmp_path / "out")
+
+
+@pytest.mark.parametrize(
+    "fusions",
+    [
+        [{"garde": "a.md#1", "doublons": ["b.md#1"]}, {"garde": "b.md#1", "doublons": ["c.md#1"]}],
+        [{"garde": "a.md#1", "doublons": ["c.md#1"]}, {"garde": "b.md#1", "doublons": ["c.md#1"]}],
+    ],
+)
+def test_consolidation_rejects_chained_or_shared_merges(subject, tmp_path, monkeypatch, fusions):
+    write_source(subject, "a.md", "alpha")
+    write_source(subject, "b.md", "beta")
+    write_source(subject, "c.md", "gamma")
+
+    def handler(prompt, messages):
+        if "DOUBLONS" in prompt:
+            return {"fusions": fusions, "conflits": []}
+        text = "alpha" if "alpha" in prompt else "beta" if "beta" in prompt else "gamma"
+        return {"unites": [unit_json("x", text)]}
+
+    install(monkeypatch, handler)
+
+    with pytest.raises(ParsingError):
+        sources.refresh_index(make_cfg(), subject.directory, tmp_path / "out")

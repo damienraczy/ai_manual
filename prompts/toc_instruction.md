@@ -11,9 +11,9 @@ Réponds **uniquement** avec un unique bloc de code ```json contenant un objet c
   "titre_manuel": "string",
   "introduction": {
     "titre": "Introduction",
-    "description": "une phrase résumant l'introduction",
+    "description": "une phrase",
     "sous_sections": [
-      {"numero": "0.1", "titre": "string", "description": "une phrase résumant la sous section"}
+      {"numero": "0.1", "titre": "string", "description": "une phrase"}
     ]
   },
   "parties": [
@@ -24,9 +24,9 @@ Réponds **uniquement** avec un unique bloc de code ```json contenant un objet c
         {
           "numero": 1,
           "titre": "string",
-          "description": "une phrase résumant le chapitre",
+          "description": "une phrase",
           "sous_sections": [
-            {"numero": "1.1", "titre": "string", "description": "une phrase résumant la sous section"}
+            {"numero": "1.1", "titre": "string", "description": "une phrase"}
           ]
         }
       ]
@@ -34,24 +34,19 @@ Réponds **uniquement** avec un unique bloc de code ```json contenant un objet c
   ],
   "conclusion": {
     "titre": "Conclusion",
-    "description": "une phrase résumant la conclusion",
+    "description": "une phrase",
     "sous_sections": []
   }
 }
 ```
 
-Règles impératives :
-- Structure et numérotation :
-    - `numero` des parties : chiffres romains ("I", "II", "III", ...).
-    - `numero` des chapitres : entiers consécutifs de 1 à N sur l'ensemble du manuel (ne recommence pas à 1 à chaque partie).
-    - `numero` des sous-sections : `"<numero_chapitre>.<rang>"` (ex. "6.3").
-    - `introduction` et `conclusion` sont deux sections du manuel **hors des parties** (numérotées automatiquement 0 et après le dernier chapitre) : ne crée donc pas de partie introductive ni de partie conclusive. Leurs sous-sections sont facultatives (`[]` accepté), celles de l'introduction se numérotent `"0.<rang>"`.
-    - Équilibre des parties : chaque partie du corps de texte doit contenir au moins 2 chapitres (jamais de chapitre unique). 
-    - Équilibre des sous-sections : si un chapitre est subdivisé, il doit comporter au minimum 2 sous-sections (jamais de sous-section orpheline type "X.1" sans "X.2"). Viser entre 2 et 5 sous-sections par chapitre.
-- Format de sortie
-    - Format JSON strictement valide (guillemets doubles, pas de virgule finale / trailing comma).
-    - Aucun commentaire, aucune clé additionnelle, aucun texte ni balise Markdown hors du bloc JSON brut.
-- Les titres et sous titres :
-    - Casse française stricte : majuscule uniquement au premier mot et aux noms propres (proscrire absolument la capitalisation anglo-saxonne / "Title Case"). Accents obligatoires sur les majuscules.
-    - Parallélisme syntaxique : stricte homogénéité grammaticale entre entrées de même niveau (privilégier le style nominal ; réserver l'infinitif aux guides pratiques ; proscrire le style interrogatif).
-    - Intitulés : concis, explicites, autonomes (compréhensibles hors contexte) et sans point final.
+Règles :
+- Numérotation :
+    - parties : chiffres romains ("I", "II", "III", ...) ;
+    - chapitres : entiers consécutifs de 1 à N sur l'ensemble du manuel (ne recommence pas à 1 à chaque partie) ;
+    - sous-sections : `"<numero_chapitre>.<rang>"` (ex. "6.3"), `"0.<rang>"` pour l'introduction.
+- `introduction` et `conclusion` sont deux sections **hors des parties** (numérotées automatiquement) : ne crée ni partie introductive ni partie conclusive. Leurs sous-sections sont facultatives (`[]` accepté).
+- Équilibre : chaque partie compte au moins 2 chapitres ; un chapitre subdivisé compte de 2 à 5 sous-sections.
+- Descriptions : une phrase qui dit ce que l'élément couvre ; elles guideront la rédaction de chaque chapitre.
+- Intitulés : concis, compréhensibles hors contexte, sans point final ; même construction grammaticale entre entrées de même niveau (style nominal de préférence, infinitif pour un guide pratique, jamais de question).
+- JSON strictement valide (guillemets doubles, pas de virgule finale), sans commentaire ni clé additionnelle.

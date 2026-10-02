@@ -17,6 +17,7 @@ $criteres_existants
 Propose, pour les parties où cela a du sens, 1 à 3 critères de relecture **propres à cette partie** (ce qui distingue ses chapitres des autres : niveau de prérequis, type d'exemple attendu, tableau de synthèse, mesure chiffrée...). Omets les parties pour lesquelles aucun critère spécifique ne se justifie.
 
 - La clé de chaque partie doit être son **titre exact**, recopié caractère pour caractère.
+- Chaque critère est vérifiable à la seule lecture d'un chapitre de la partie.
 - `id` : identifiant en snake_case, unique et différent des critères existants.
 - `severity` : `"bloquant"` (force une réécriture) ou `"recommande"`. Réserve `"bloquant"` à l'essentiel.
 

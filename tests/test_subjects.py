@@ -175,7 +175,7 @@ def test_system_prompt_keeps_generic_output_rules(tmp_path):
     make_subject_dir(tmp_path)
     prompt = load_subject("cyber", tmp_path).system_prompt()
     assert "Format de sortie" in prompt
-    assert "Markdown strict" in prompt
+    assert "un programme l'analyse" in prompt
 
 
 def test_system_prompt_override_file_is_used_verbatim(tmp_path):

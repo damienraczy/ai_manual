@@ -1,29 +1,38 @@
 # Tâche : évaluer une section du manuel
 
-Tu es un relecteur exigeant. Évalue la section ci-dessous **uniquement** au regard des critères fournis (n'invente pas d'autres critères).
+Évalue la section ci-dessous au regard des seuls critères listés. Un critère rempli ne donne lieu à aucune remarque.
 
-## Critères à vérifier
+## Section attendue
+
+- Titre : `## $intitule`
+- Sous-sections, dans l'ordre :
+$sous_sections
+
+## Critères
 
 $requirements
 
+$regles
+
 ## Section à évaluer
 
+<section>
 $section_text
+</section>
 
 ## Format de sortie — STRICT
 
-Réponds **uniquement** avec un unique bloc de code ```json contenant un objet conforme exactement au schéma suivant, sans aucun texte avant ou après le bloc :
+Réponds uniquement avec un bloc de code ```json, sans texte avant ni après, conforme à ce schéma :
 
 ```json
 {
-  "verdict": "accept" | "revise",
+  "verdict": "accept",
   "issues": [
-    {"id": "identifiant_du_critere", "severity": "bloquant" | "recommande", "detail": "explication précise et actionnable du problème"}
+    {"id": "identifiant_du_critere", "severity": "bloquant", "detail": "problème localisé et correction attendue"}
   ]
 }
 ```
 
-Règles :
-- `verdict` = `"revise"` si au moins un critère `bloquant` n'est pas rempli. Sinon `"accept"` (même si des critères `recommande` restent perfectibles : liste-les dans `issues` mais le verdict reste `accept`).
-- Chaque `issue` doit référencer un `id` de critère fourni ci-dessus.
-- N'invente aucune clé additionnelle, JSON strictement valide.
+- `verdict` : `"revise"` si au moins un critère `bloquant` n'est pas rempli, sinon `"accept"`.
+- `issues` : un élément par critère non rempli, `[]` si tous le sont. `id` : l'identifiant exact d'un critère ci-dessus ; `severity` : celle de ce critère (`"bloquant"` ou `"recommande"`) ; `detail` : où se trouve le problème (sous-section, phrase citée) et ce qu'il faut corriger.
+- Aucune autre clé.

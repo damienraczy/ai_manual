@@ -376,6 +376,12 @@ def _consolidation_schema(known: set[str]) -> type[ConsolidationSchema]:
                 raise ValueError(f"Identifiants inconnus : {', '.join(unknown)}. N'utilise que ceux de la liste.")
             if any(f.garde in f.doublons for f in self.fusions):
                 raise ValueError("Une unité ne peut pas être son propre doublon.")
+            duplicates = [d for f in self.fusions for d in f.doublons]
+            gardes = {f.garde for f in self.fusions}
+            if len(duplicates) != len(set(duplicates)) or gardes & set(duplicates):
+                raise ValueError(
+                    "Une unité ne peut être doublon qu'une fois, et une unité conservée ne peut pas être le doublon d'une autre."
+                )
             return self
 
     return _Known

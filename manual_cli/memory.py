@@ -24,16 +24,16 @@ Mets à jour ce résumé pour qu'il serve aux sections suivantes, en 800 mots ma
 garde des entrées précises (pas de généralités) et indique à chaque fois le numéro du chapitre concerné. Utilise exactement ces rubriques :
 
 ## Idées déjà développées
-(une ligne par idée ou argument, avec le chapitre où il est traité à fond : « idée — chap. N »)
+(une ligne par idée ou argument, avec le chapitre où il est traité à fond : « idée (chap. N) »)
 
 ## Métaphores et images déjà utilisées
-(chaque métaphore, analogie ou image récurrente, avec son chapitre : « image — chap. N »)
+(chaque métaphore, analogie ou image récurrente, avec son chapitre : « image (chap. N) »)
 
 ## Termes définis
-(un terme par ligne, définition en quelques mots, chapitre)
+(un terme par ligne : « terme : définition en quelques mots (chap. N) »)
 
 ## Exemples déjà utilisés
-(cas, scénarios et exemples concrets, à ne pas reprendre à l'identique)
+(cas, scénarios et exemples concrets, avec leur chapitre)
 
 ## Décisions de terminologie et de style
 (règles à respecter dans la suite)

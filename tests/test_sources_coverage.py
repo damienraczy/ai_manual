@@ -277,3 +277,53 @@ def test_tracking_stays_lean_without_matter(tmp_path):
     raw = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
 
     assert "sources_total" not in raw["sections"][0]
+
+
+# --- réécriture : le réécrivain voit la matière ----------------------------------------
+
+
+def test_rewriter_receives_the_matter_so_it_can_cover_missing_units(tmp_path, monkeypatch):
+    setup_matter(tmp_path, [unit(1, enonce="idée à ne pas oublier")])
+    prompts = {"rewrite": [], "judge": 0}
+
+    class _C:
+        def __init__(self, role):
+            self.role = role
+
+        def chat(self, messages):
+            prompt = messages[-1]["content"]
+            if self.role == "model_write":
+                return "## 1. Un\nbrouillon\n--- Fin de la section 1 — Dis « continue » pour la suivante ---"
+            if self.role == "model_rewriter":
+                prompts["rewrite"].append(prompt)
+                return "## 1. Un\ncorrigé <!-- écarté [a.md#1] : x -->\n--- Fin de la section 1 — Dis « continue » pour la suivante ---"
+            if self.role == "model_judge":
+                prompts["judge"] += 1
+                if prompts["judge"] == 1:
+                    return '```json\n{"verdict": "revise", "issues": [{"id": "couverture_sources", "severity": "bloquant", "detail": "[a.md#1] oublié"}]}\n```'
+                return '```json\n{"verdict": "accept", "issues": []}\n```'
+            return "mémoire"
+
+    monkeypatch.setattr(generator, "_client", lambda cfg, role: _C(role))
+    state = make_state()
+    save_state(tmp_path, state)
+
+    generator.write_section(make_cfg(), tmp_path, state, state.sections[0], {"generic": [], "parties": {}}, system_prompt="S")
+
+    assert "idée à ne pas oublier" in prompts["rewrite"][0] and "écarté" in prompts["rewrite"][0]
+
+
+def test_rewrite_prompt_without_matter_has_no_sources_section(monkeypatch):
+    seen = []
+
+    class _C:
+        def chat(self, messages):
+            seen.append(messages[-1]["content"])
+            return "x"
+
+    monkeypatch.setattr(generator, "_client", lambda cfg, role: _C())
+    verdict = generator.JudgeVerdict(verdict="revise", issues=[])
+
+    generator._rewrite_section(make_cfg(), make_state().sections[0], "texte", verdict)
+
+    assert "Matière fournie" not in seen[0] and "écarté" not in seen[0]

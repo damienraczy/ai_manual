@@ -118,7 +118,7 @@ def test_improve_injects_the_matter_too(tmp_path, subject, monkeypatch):
     generator.run_improve(make_cfg(), tmp_path, subject, [1], workers=1)
 
     assert "idée de l'auteur" in router.write_prompts[0]
-    assert "Version actuelle du chapitre" in router.write_prompts[0]
+    assert "<version_actuelle>" in router.write_prompts[0]
 
 
 def test_prepare_sources_is_a_no_op_without_documents(tmp_path, subject, monkeypatch):

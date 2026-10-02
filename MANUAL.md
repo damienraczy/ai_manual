@@ -16,7 +16,7 @@ Ce document est la référence exhaustive de `ai_manual` (commande `manual`). Le
 10. [Flux de travail](#10-flux-de-travail)
 11. [Améliorer le contenu et le plan](#11-améliorer-le-contenu-et-le-plan)
 12. [Le glossaire](#12-le-glossaire)
-    - [12 bis. Documents de référence](#12-bis-documents-de-référence)
+12.bis. [Documents de référence](#12-bis-documents-de-référence)
 13. [Publication LinkedIn](#13-publication-linkedin)
 14. [Fichiers produits](#14-fichiers-produits)
 15. [Traçabilité et diagnostic](#15-traçabilité-et-diagnostic)
@@ -209,7 +209,7 @@ Un champ inconnu, manquant ou vide est refusé avec un message explicite. Le gab
 
 Trois niveaux s'additionnent, pour chaque section :
 
-1. **Communs** : `requirements/requirements.yml`, neutres vis-à-vis du sujet — définitions claires, cohérence avec le plan, exemples concrets, avantages et limites, style, Markdown propre, marqueur de fin (bloquants) ; tableaux comparatifs, checklist, anti-patterns, cas d'usage, absence de redites (recommandés). Les exigences propres à une discipline (par exemple « un exemple de prompt complet » pour le prompt engineering) vont dans le `requirements.yml` du sujet.
+1. **Communs** : `requirements/requirements.yml`, neutres vis-à-vis du sujet — définitions claires, cohérence avec le plan, exemples concrets, style et absence de métadiscours, Markdown propre, marqueur de fin (bloquants) ; typographie et lexique, densité, limites des méthodes, tableaux comparatifs, honnêteté des exemples, absence de redites (recommandés). Aucun critère n'impose de rubrique fixe (liste de contrôle, anti-patterns…) : ces rubriques plaquées dans chaque chapitre produisaient du remplissage. Les exigences propres à une discipline (par exemple « un exemple de prompt complet » pour le prompt engineering) vont dans le `requirements.yml` du sujet.
 2. **Du sujet** (`generic`) : `subjects/<slug>/requirements.yml`.
 3. **D'une partie** (`parties`) : clé = **titre exact** de la partie dans le plan. Une introduction ou une conclusion n'appartient à aucune partie : elle n'est jugée que sur les critères communs et ceux du sujet.
 
@@ -330,9 +330,9 @@ Un ancien `manifest.json`, qui contenait le plan complet (`toc` et sections reco
 ### 7.1 Boucle d'une section (`write_section`)
 
 1. **Brouillon** — `model_write` reçoit le prompt système du sujet et l'instruction de section : numéro, titre, description, sous-sections attendues avec leur description, **plan complet de l'ouvrage** (chapitre en cours signalé) et **mémoire**.
-2. **Jugement** — `model_judge` évalue le texte contre les critères applicables et répond en JSON (`accept` ou `revise`, avec la liste des problèmes : id du critère, sévérité, détail).
+2. **Jugement** — `model_judge` évalue le texte contre les critères applicables ; il reçoit aussi le titre et les sous-sections attendus et les règles de rédaction du prompt système (pour juger la cohérence avec le plan, le style et la typographie). Il répond en JSON (`accept` ou `revise`, avec la liste des problèmes : id du critère, sévérité, détail).
 3. **Garde-fou local** — si le juge répond `accept` mais liste un problème **bloquant** (d'après les critères), le verdict est forcé à `revise`.
-4. **Réécriture** — si `revise`, `model_rewriter` corrige à partir des problèmes relevés, puis le juge relit. Au plus `--max-rewrite` cycles (défaut 2).
+4. **Réécriture** — si `revise`, `model_rewriter` corrige à partir des problèmes relevés (les `bloquant` obligatoirement, les `recommande` s'ils améliorent le texte), avec le même prompt système que le rédacteur, puis le juge relit. Au plus `--max-rewrite` cycles (défaut 2).
 5. **Acceptation** — la section est `done` seulement si le juge accepte **et** que le marqueur de fin exact est présent. Sinon : `failed`.
 6. **Écriture et suivi** — le fichier est écrit (même en cas d'échec), le manifeste est mis à jour.
 7. **Mémoire** — `model_think` intègre la section au digest (voir 8).
@@ -340,7 +340,7 @@ Un ancien `manifest.json`, qui contenait le plan complet (`toc` et sections reco
 ### 7.2 Format imposé d'une section
 
 - commence par `## N. Titre` (chapitre) ou `## Titre` (introduction / conclusion), sans titre de niveau supérieur ni préambule ;
-- résumé exécutif d'environ 7 à 10 % du volume, en citation Markdown (`>`) — pour les chapitres ;
+- synthèse d'environ 7 à 10 % du volume, en citation Markdown (`>`), sans titre ni étiquette — pour les chapitres ;
 - chaque sous-section annoncée, dans l'ordre, sous un titre `###` (numéro et titre seulement) ;
 - se termine par `--- Fin de la section N — Dis « continue » pour la suivante ---`, rien après. Le marqueur est retiré du fichier final.
 
@@ -710,8 +710,8 @@ Tout le texte envoyé aux modèles est dans `prompts/` (prompts propres à un su
 | `improve_instruction.md` | Amélioration d'une section | idem + `consigne`, `contenu_existant` |
 | `improve_default_instruction.md` | Consigne d'amélioration par défaut | — |
 | `role_introduction.md`, `role_conclusion.md` | Consigne propre à l'introduction / la conclusion (injectée comme `$role_note`) | — |
-| `judge_instruction.md` | Relecture | `requirements`, `section_text` |
-| `rewrite_instruction.md` | Réécriture après rejet | `section_text`, `issues`, `numero` |
+| `judge_instruction.md` | Relecture | `requirements`, `section_text`, `intitule`, `sous_sections`, `regles` |
+| `rewrite_instruction.md` | Réécriture après rejet (avec le prompt système du sujet) | `section_text`, `issues`, `numero`, `sources` |
 | `toc_improve_instruction.md`, `toc_improve_default_instruction.md` | Amélioration du plan | `toc_actuelle`, `consigne`, `chapitres_figes` |
 | `glossary_extract_instruction.md` | Extraction des termes d'un chapitre | `numero`, `titre`, `texte` |
 | `glossary_merge_instruction.md` | Consolidation du glossaire | `entrees` |

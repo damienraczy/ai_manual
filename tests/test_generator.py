@@ -554,6 +554,35 @@ def test_run_write_uses_the_subject_system_prompt_and_requirements(tmp_path, cfg
     assert "marqueur_fin" in judge_prompt
 
 
+def test_rewriter_and_judge_see_the_writer_rules_and_the_expected_outline(tmp_path, cfg, monkeypatch):
+    state = make_state()
+    fake = FakeClients(
+        {
+            "model_write": ["## 1. Intro\nbrouillon"],
+            "model_judge": [judge_revise_json(), judge_accept_json()],
+            "model_rewriter": [good_section_text()],
+            "model_think": ["ok"],
+        }
+    )
+    patch_clients(monkeypatch, fake)
+
+    generator.write_section(cfg, tmp_path, state, state.sections[0], REQUIREMENTS, system_prompt="REGLES DU SUJET")
+
+    assert fake.calls["model_rewriter"][0][0] == {"role": "system", "content": "REGLES DU SUJET"}
+    judge_prompt = fake.calls["model_judge"][0][-1]["content"]
+    assert "REGLES DU SUJET" in judge_prompt
+    assert "## 1. Intro" in judge_prompt and "1.1 Def" in judge_prompt
+
+
+def test_judge_prompt_without_writer_rules_has_no_rules_block(cfg, monkeypatch):
+    fake = FakeClients({"model_judge": [judge_accept_json()]})
+    patch_clients(monkeypatch, fake)
+
+    generator._judge_section(cfg, make_state().sections[0], "texte", REQUIREMENTS)
+
+    assert "Règles de rédaction" not in fake.calls["model_judge"][0][-1]["content"]
+
+
 def test_run_write_refuses_a_manifest_written_for_another_subject(tmp_path, cfg, subject):
     save_state(tmp_path, make_state().model_copy(update={"subject": "autre-sujet"}))
 

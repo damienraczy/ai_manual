@@ -9,45 +9,45 @@ generic:
     severity: bloquant
 
   - id: coherence_toc
-    description: "Le contenu correspond exactement au titre et aux sous-sections annoncés dans la table des matières pour ce chapitre (aucune sous-section omise, aucune ajoutée)."
+    description: "Le titre et les sous-sections sont exactement ceux de la section attendue, dans le même ordre (aucune omise, aucune ajoutée), et chaque sous-section traite ce que son titre annonce."
     severity: bloquant
 
   - id: exemples_concrets
-    description: "Au moins un exemple concret est fourni pour chaque notion ou méthode majeure présentée."
-    severity: bloquant
-
-  - id: avantages_limites
-    description: "Les avantages et les limites de chaque notion ou méthode présentée sont explicités."
+    description: "Chaque notion ou méthode majeure est illustrée par au moins un exemple concret."
     severity: bloquant
 
   - id: style_langue
-    description: "Rédaction claire, professionnelle et pédagogique, dans la langue et au ton du sujet ; la terminologie reste cohérente d'un bout à l'autre du texte."
+    description: "Rédaction claire et pédagogique, dans la langue et au ton fixés par les règles de rédaction ; terminologie cohérente d'un bout à l'autre ; aucun métadiscours (annonce du contenu, mention des consignes, de la mémoire ou des documents fournis)."
     severity: bloquant
 
   - id: format_markdown
-    description: "Markdown propre : hiérarchie de titres cohérente avec la table des matières, listes, tableaux et blocs de code bien formés."
+    description: "Markdown propre : titre `##`, synthèse en bloc de citation, titres `###` des sous-sections, listes, tableaux et blocs de code bien formés."
     severity: bloquant
 
   - id: marqueur_fin
     description: "La section se termine par la ligne exacte « --- Fin de la section [numéro] — Dis « continue » pour la suivante --- » avec le bon numéro, et rien après."
     severity: bloquant
 
+  - id: typographie_lexique
+    description: "Typographie et lexique conformes aux règles de rédaction : espaces avant la ponctuation double, guillemets « », pas de tiret cadratin dans le texte, casse française des titres, aucun mot proscrit, aucun calque de l'anglais, aucune formule creuse."
+    severity: recommande
+
+  - id: densite
+    description: "Chaque paragraphe apporte une information : pas de remplissage, pas de rubrique ajoutée pour la forme, pas de phrase de transition vide."
+    severity: recommande
+
+  - id: limites
+    description: "Les limites ou conditions d'emploi des méthodes présentées sont indiquées quand elles existent."
+    severity: recommande
+
   - id: tableaux_comparatifs
-    description: "Un tableau comparatif ou récapitulatif est présent si la section compare plusieurs approches ou variantes."
+    description: "Quand la section compare plusieurs approches selon les mêmes critères, un tableau les récapitule."
     severity: recommande
 
-  - id: checklist
-    description: "Une checklist actionnable (bonnes pratiques) conclut ou ponctue la section."
-    severity: recommande
-
-  - id: anti_patterns
-    description: "Au moins un anti-pattern courant est mentionné avec son impact."
-    severity: recommande
-
-  - id: cas_usage
-    description: "Un cas d'usage réel (entreprise, recherche ou terrain) illustre l'application de la notion ou de la méthode."
+  - id: exemples_honnetes
+    description: "Un cas présenté comme réel (étude, entreprise, chiffre, citation) est vérifiable ; un cas inventé est présenté comme illustratif."
     severity: recommande
 
   - id: pas_de_repetition
-    description: "La section n'introduit pas de redite non motivée d'un concept déjà pleinement défini dans une section précédente (se fier au résumé mémoire fourni en contexte)."
+    description: "La section ne répète pas une même idée, explication ou exemple à plusieurs endroits."
     severity: recommande
