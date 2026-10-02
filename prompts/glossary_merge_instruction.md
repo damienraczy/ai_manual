@@ -1,6 +1,6 @@
 # Tâche : consolider le glossaire d'un manuel
 
-Voici les termes extraits chapitre par chapitre, une ligne par terme : `terme — définition (chap. N)`. Produis le glossaire final du manuel.
+Voici les termes extraits chapitre par chapitre, une ligne par terme : `terme : définition (chap. N)`. Produis le glossaire final du manuel.
 
 ## Règles
 

@@ -91,7 +91,7 @@ def test_a_generated_subject_goes_all_the_way_to_a_publishable_section(tmp_path,
     subject = load_subject("jardinage", subjects_dir)
     generator.generate_toc(cfg, output_dir, subject)
     results = generator.run_write(cfg, output_dir, subject)
-    publish_dir = publish.publish_section(cfg, output_dir, 1, generate_image=False)
+    publish_dir = publish.publish_section(cfg, output_dir, 1, system_prompt=subject.system_prompt(), generate_image=False)
 
     assert load_state(output_dir).subject == "jardinage"
     assert [s.status for s in results] == ["done"]

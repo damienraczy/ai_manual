@@ -117,10 +117,11 @@ def test_generate_post_draft_substitutes_section_context_and_strips_response():
     section = state.section_by_numero(1)
     client = FakeChatClient("  Un brouillon de post.\n{ARTICLE_URL}\n  ")
 
-    draft = publish.generate_post_draft(client, state.titre_manuel, section)
+    draft = publish.generate_post_draft(client, state.titre_manuel, section, "SYS")
 
     assert draft == "Un brouillon de post.\n{ARTICLE_URL}"
-    prompt = client.received_messages[0]["content"]
+    assert client.received_messages[0] == {"role": "system", "content": "SYS"}
+    prompt = client.received_messages[-1]["content"]
     assert "Manuel Test" in prompt
     assert "Introduction" in prompt
     assert "Une intro." in prompt
@@ -134,7 +135,7 @@ def test_publish_section_raises_if_section_not_done(tmp_path, cfg):
     save_state(tmp_path, state)
 
     with pytest.raises(publish.PublishError, match="2"):
-        publish.publish_section(cfg, tmp_path, 2)
+        publish.publish_section(cfg, tmp_path, 2, system_prompt="SYS")
 
 
 def test_publish_section_creates_expected_files(tmp_path, cfg, monkeypatch):
@@ -157,7 +158,7 @@ def test_publish_section_creates_expected_files(tmp_path, cfg, monkeypatch):
     fake_image_client = FakeImageClient()
     monkeypatch.setattr(publish, "_image_client", lambda cfg: fake_image_client)
 
-    publish_dir = publish.publish_section(cfg, tmp_path, 1)
+    publish_dir = publish.publish_section(cfg, tmp_path, 1, system_prompt="SYS")
 
     assert publish_dir == tmp_path / "publish" / "01_introduction"
     html = (publish_dir / "article.html").read_text(encoding="utf-8")
@@ -181,7 +182,7 @@ def test_publish_section_skips_image_when_disabled(tmp_path, cfg, monkeypatch):
 
     monkeypatch.setattr(publish, "_image_client", _fail_image_client)
 
-    publish_dir = publish.publish_section(cfg, tmp_path, 1, generate_image=False)
+    publish_dir = publish.publish_section(cfg, tmp_path, 1, system_prompt="SYS", generate_image=False)
 
     assert not (publish_dir / "cover.png").exists()
     assert (publish_dir / "article.html").exists()

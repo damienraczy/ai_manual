@@ -221,7 +221,7 @@ def test_cmd_redo_passes_single_numero_and_one_worker(tmp_path, monkeypatch):
 def test_cmd_publish_reports_generated_files(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "load_config", lambda: object())
     publish_dir = tmp_path / "publish" / "01_intro"
-    monkeypatch.setattr(cli, "publish_section", lambda cfg, out, numero, generate_image: publish_dir)
+    monkeypatch.setattr(cli, "publish_section", lambda cfg, out, numero, system_prompt, generate_image: publish_dir)
 
     rc = cli.main(["--output", str(tmp_path), "publish", "1"])
 
@@ -234,8 +234,9 @@ def test_cmd_publish_forwards_no_image_flag(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "load_config", lambda: object())
     received = {}
 
-    def fake_publish_section(cfg, out, numero, generate_image):
+    def fake_publish_section(cfg, out, numero, system_prompt, generate_image):
         received["numero"] = numero
+        received["system_prompt"] = system_prompt
         received["generate_image"] = generate_image
         return tmp_path / "publish" / "01_intro"
 
@@ -244,6 +245,7 @@ def test_cmd_publish_forwards_no_image_flag(tmp_path, monkeypatch):
     cli.main(["--output", str(tmp_path), "publish", "3", "--no-image"])
 
     assert received["numero"] == 3
+    assert "Tu es un expert." in received["system_prompt"]
     assert received["generate_image"] is False
 
 
@@ -251,7 +253,7 @@ def test_cmd_publish_generates_image_by_default(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "load_config", lambda: object())
     received = {}
 
-    def fake_publish_section(cfg, out, numero, generate_image):
+    def fake_publish_section(cfg, out, numero, system_prompt, generate_image):
         received["generate_image"] = generate_image
         return tmp_path / "publish" / "01_intro"
 
@@ -267,7 +269,7 @@ def test_cmd_publish_reports_not_done_section_as_error(tmp_path, monkeypatch, ca
 
     monkeypatch.setattr(cli, "load_config", lambda: object())
 
-    def fake_publish_section(cfg, out, numero, generate_image):
+    def fake_publish_section(cfg, out, numero, system_prompt, generate_image):
         raise PublishError(f"La section {numero} n'est pas terminée (statut : 'pending').")
 
     monkeypatch.setattr(cli, "publish_section", fake_publish_section)
@@ -322,7 +324,7 @@ def test_cmd_redo_configures_tracing(tmp_path, monkeypatch):
 
 def test_cmd_publish_configures_tracing(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "load_config", lambda: object())
-    monkeypatch.setattr(cli, "publish_section", lambda cfg, out, numero, generate_image: tmp_path / "publish" / "x")
+    monkeypatch.setattr(cli, "publish_section", lambda cfg, out, numero, system_prompt, generate_image: tmp_path / "publish" / "x")
 
     cli.main(["--output", str(tmp_path), "publish", "1"])
 
@@ -535,7 +537,7 @@ def test_publish_and_traces_use_the_subject_default_directory(tmp_path, monkeypa
     monkeypatch.setattr(cli, "load_config", lambda: object())
     seen = {}
 
-    def fake_publish_section(cfg, out, numero, generate_image):
+    def fake_publish_section(cfg, out, numero, system_prompt, generate_image):
         seen["publish"] = out
         return out / "publish" / "x"
 
@@ -1244,8 +1246,9 @@ def test_glossary_command_reports_the_written_file(tmp_path, monkeypatch, capsys
 
     received = {}
 
-    def fake_build(cfg, out):
+    def fake_build(cfg, out, system_prompt):
         received["out"] = out
+        received["system_prompt"] = system_prompt
         return GlossaryResult(path=out / "glossaire.md", entries=[object(), object()], chapters=[1, 2])
 
     monkeypatch.setattr(cli, "load_config", lambda: object())
@@ -1255,6 +1258,7 @@ def test_glossary_command_reports_the_written_file(tmp_path, monkeypatch, capsys
 
     assert rc == 0
     assert received["out"] == tmp_path
+    assert "Tu es un expert." in received["system_prompt"]
     out = capsys.readouterr().out
     assert "2 termes" in out and "glossaire.md" in out
 

@@ -95,19 +95,34 @@ def render_glossary(titre_manuel: str, entries: list[GlossaryEntry]) -> str:
     Returns:
         Le Markdown du glossaire (une ligne par terme, avec ses chapitres).
     """
-    lines = [f"# Glossaire — {titre_manuel}", ""]
+    lines = [f"# Glossaire : {titre_manuel}", ""]
     for e in sorted(entries, key=lambda e: _sort_key(e.terme)):
         chapters = f" (chap. {', '.join(str(n) for n in sorted(e.chapitres))})" if e.chapitres else ""
-        lines.append(f"- **{e.terme}** — {e.definition.strip()}{chapters}")
+        lines.append(f"- **{e.terme}** : {e.definition.strip()}{chapters}")
     return "\n".join(lines) + "\n"
 
 
-def build_glossary(cfg: AppConfig, output_dir: Path) -> GlossaryResult:
+def _messages(system_prompt: str, instruction: str) -> list[dict]:
+    """Assemble la conversation : prompt système du sujet puis consigne.
+
+    Args:
+        system_prompt: Prompt système du sujet (langue, style, typographie).
+        instruction: Consigne de la tâche.
+
+    Returns:
+        Les messages à envoyer au modèle.
+    """
+    return [{"role": "system", "content": system_prompt}, {"role": "user", "content": instruction}]
+
+
+def build_glossary(cfg: AppConfig, output_dir: Path, *, system_prompt: str) -> GlossaryResult:
     """Construit `glossaire.md` à partir des chapitres terminés.
 
     Args:
         cfg: Configuration applicative résolue.
         output_dir: Répertoire de sortie du manuel.
+        system_prompt: Prompt système du sujet : les définitions sont publiées et suivent
+            les mêmes règles de langue et de typographie que les chapitres.
 
     Returns:
         Le résultat (fichier, entrées, chapitres exploités).
@@ -132,12 +147,12 @@ def build_glossary(cfg: AppConfig, output_dir: Path) -> GlossaryResult:
         if not path.is_file():
             raise GeneratorError(f"Fichier du chapitre {section.numero} introuvable : {path}")
         prompt = extract.substitute(numero=section.numero, titre=section.titre, texte=path.read_text(encoding="utf-8").strip())
-        found = call_structured(client, [{"role": "user", "content": prompt}], GlossarySchema)
+        found = call_structured(client, _messages(system_prompt, prompt), GlossarySchema)
         raw.extend(e.model_copy(update={"chapitres": [section.numero]}) for e in found.entrees)
 
-    lines = "\n".join(f"- {e.terme} — {e.definition} (chap. {e.chapitres[0]})" for e in raw)
+    lines = "\n".join(f"- {e.terme} : {e.definition} (chap. {e.chapitres[0]})" for e in raw)
     merge = string.Template(_read_prompt("glossary_merge_instruction.md")).substitute(entrees=lines)
-    merged = call_structured(client, [{"role": "user", "content": merge}], GlossarySchema)
+    merged = call_structured(client, _messages(system_prompt, merge), GlossarySchema)
 
     path = output_dir / GLOSSARY_FILENAME
     path.write_text(render_glossary(state.titre_manuel, merged.entrees), encoding="utf-8")

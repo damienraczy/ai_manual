@@ -25,9 +25,11 @@ class FakeClient:
     def __init__(self, replies):
         self.replies = list(replies)
         self.prompts: list[str] = []
+        self.systems: list[str] = []
 
     def chat(self, messages):
         self.prompts.append(messages[-1]["content"])
+        self.systems.append(messages[0]["content"] if messages[0]["role"] == "system" else "")
         return self.replies.pop(0)
 
 
@@ -64,33 +66,36 @@ def test_build_glossary_extracts_per_chapter_then_merges_and_writes_sorted_file(
     )
     monkeypatch.setattr(glossary, "_client", lambda cfg, role: client)
 
-    result = glossary.build_glossary(cfg, tmp_path)
+    result = glossary.build_glossary(cfg, tmp_path, system_prompt="SYS")
 
     assert result.chapters == [1, 3]
+    assert client.systems == ["SYS", "SYS", "SYS"]
     assert "texte 1" in client.prompts[0] and "texte 3" in client.prompts[1]
     assert "Prompt" in client.prompts[2] and "chap. 1" in client.prompts[2]
+    assert "—" not in client.prompts[2].split("## Termes extraits")[-1]
     text = (tmp_path / "glossaire.md").read_text(encoding="utf-8")
-    assert text.startswith("# Glossaire")
+    assert text.startswith("# Glossaire : ")
+    assert "—" not in text
     assert text.index("**Écart**") < text.index("**Prompt**") < text.index("**Zéro-shot**")
-    assert "**Prompt** — consigne envoyée (chap. 1, 3)" in text
+    assert "**Prompt** : consigne envoyée (chap. 1, 3)" in text
     assert result.path == tmp_path / "glossaire.md"
 
 
 def test_build_glossary_without_manifest_fails(tmp_path, cfg):
     with pytest.raises(GeneratorError, match="init"):
-        glossary.build_glossary(cfg, tmp_path)
+        glossary.build_glossary(cfg, tmp_path, system_prompt="SYS")
 
 
 def test_build_glossary_without_done_chapter_fails(tmp_path, cfg):
     save_state(tmp_path, make_state(["pending"]))
     with pytest.raises(GeneratorError, match="terminé"):
-        glossary.build_glossary(cfg, tmp_path)
+        glossary.build_glossary(cfg, tmp_path, system_prompt="SYS")
 
 
 def test_build_glossary_missing_chapter_file_fails(tmp_path, cfg):
     save_state(tmp_path, make_state(["done"]))
     with pytest.raises(GeneratorError, match="introuvable"):
-        glossary.build_glossary(cfg, tmp_path)
+        glossary.build_glossary(cfg, tmp_path, system_prompt="SYS")
 
 
 def test_client_builds_ollama_client_from_role(cfg):

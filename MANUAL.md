@@ -391,7 +391,7 @@ Le rédacteur a pour consigne de ne reprendre ni idées, ni métaphores, ni exem
 
 | Option | Effet |
 |---|---|
-| `--subject SLUG` | Sujet (dossier de `subjects/`). Facultatif s'il n'en existe qu'un ; **obligatoire dès qu'il y en a plusieurs**, sauf pour `status`, `publish`, `traces`, `glossary` quand `--output` est donné. |
+| `--subject SLUG` | Sujet (dossier de `subjects/`). Facultatif s'il n'en existe qu'un ; **obligatoire dès qu'il y en a plusieurs**, sauf pour `status` et `traces` quand `--output` est donné (`publish` et `glossary` ont besoin du prompt système du sujet). |
 | `--output DIR` | Répertoire de sortie (défaut : `output/<slug>/`). |
 
 ### 9.2 `manual init [--force]`
@@ -543,10 +543,10 @@ Relit et améliore le plan **en partant de l'actuel** (le modèle reçoit le pla
 1. **Extraction** : un appel `model_write` par chapitre (`prompts/glossary_extract_instruction.md`) ; le modèle repère les termes, concepts et sigles que le chapitre définit ou emploie de façon importante, avec une définition d'une à deux phrases fidèle au texte.
 2. **Consolidation** : un dernier appel (`prompts/glossary_merge_instruction.md`) reçoit toutes les entrées avec leur numéro de chapitre, fusionne les doublons et variantes (casse, pluriel, sigle et forme développée), harmonise les définitions, conserve la liste des chapitres de chaque terme et écarte les entrées triviales.
 
-Rendu : `# Glossaire — <titre du manuel>`, puis une ligne par terme, **triée alphabétiquement sans tenir compte de la casse ni des accents** :
+Rendu : `# Glossaire : <titre du manuel>`, puis une ligne par terme, **triée alphabétiquement sans tenir compte de la casse ni des accents** :
 
 ```
-- **Prompt** — consigne envoyée au modèle (chap. 1, 3)
+- **Prompt** : consigne envoyée au modèle (chap. 1, 3)
 ```
 
 Particularités :

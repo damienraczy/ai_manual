@@ -166,7 +166,7 @@ Le dossier [`examples/prompt-engineering/`](examples/prompt-engineering/README.m
 
 Deux options se placent **avant** la sous-commande :
 
-- `--subject SUJET` choisit le sujet (un dossier de `subjects/`). Facultatif tant qu'il n'existe qu'un seul sujet ; **dès qu'il y en a plusieurs, il devient obligatoire** pour `init`, `write`, `redo`, `improve`, `improve-toc`, `status`, `glossary`, `publish` et `traces` (sauf `status`, `glossary`, `publish` et `traces` si `--output` est donné). `subject criteria` et `subject edit` acceptent aussi `--subject` à la place de l'identifiant.
+- `--subject SUJET` choisit le sujet (un dossier de `subjects/`). Facultatif tant qu'il n'existe qu'un seul sujet ; **dès qu'il y en a plusieurs, il devient obligatoire** pour `init`, `write`, `redo`, `improve`, `improve-toc`, `status`, `glossary`, `publish` et `traces` (sauf `status` et `traces` si `--output` est donné). `subject criteria` et `subject edit` acceptent aussi `--subject` à la place de l'identifiant.
 - `--output DIR` choisit le répertoire de sortie (défaut : `output/<sujet>/` dans le dépôt).
 
 ### Génération

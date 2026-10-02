@@ -254,11 +254,13 @@ def cmd_glossary(args: argparse.Namespace) -> int:
 
     Raises:
         GeneratorError: Si aucun chapitre n'est terminé (capturée par `main`).
+        SubjectError: Si le sujet ne peut pas être déterminé (capturée par `main`).
     """
     cfg = load_config()
-    output_dir = _output_dir(args)
+    subject = _load_subject(args)
+    output_dir = _output_dir(args, subject)
     tracing.configure(output_dir)
-    result = build_glossary(cfg, output_dir)
+    result = build_glossary(cfg, output_dir, system_prompt=subject.system_prompt())
     print(f"Glossaire écrit : {len(result.entries)} termes, issus des chapitres {', '.join(map(str, result.chapters))} → {result.path}")
     return 0
 
@@ -312,11 +314,15 @@ def cmd_publish(args: argparse.Namespace) -> int:
 
     Raises:
         PublishError: Propagée si la section n'est pas terminée (capturée par `main`).
+        SubjectError: Si le sujet ne peut pas être déterminé (capturée par `main`).
     """
     cfg = load_config()
-    output_dir = _output_dir(args)
+    subject = _load_subject(args)
+    output_dir = _output_dir(args, subject)
     tracing.configure(output_dir)
-    publish_dir = publish_section(cfg, output_dir, args.numero, generate_image=not args.no_image)
+    publish_dir = publish_section(
+        cfg, output_dir, args.numero, system_prompt=subject.system_prompt(), generate_image=not args.no_image
+    )
     print(f"Paquet de publication prêt : {publish_dir}")
     print("  - article.html : à ouvrir puis coller dans l'éditeur d'article LinkedIn")
     print("  - post.txt     : brouillon de post (remplace {ARTICLE_URL} par le lien de l'article)")

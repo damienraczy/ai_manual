@@ -102,13 +102,15 @@ def _read_prompt(name: str) -> str:
     return (PROMPTS_DIR / name).read_text(encoding="utf-8")
 
 
-def generate_post_draft(client, manual_titre: str, section: SectionState) -> str:
+def generate_post_draft(client, manual_titre: str, section: SectionState, system_prompt: str) -> str:
     """Génère un brouillon de post LinkedIn annonçant le chapitre publié.
 
     Args:
         client: Client de chat du rôle `model_write` (ex: `OllamaCloudClient`).
         manual_titre: Titre général du manuel.
         section: Section publiée.
+        system_prompt: Prompt système du sujet (langue, style, typographie), le même que
+            pour la rédaction des chapitres.
 
     Returns:
         Le texte brut du post, avec le jeton `{ARTICLE_URL}` à remplacer
@@ -121,7 +123,8 @@ def generate_post_draft(client, manual_titre: str, section: SectionState) -> str
         titre=section.titre,
         description=section.description,
     )
-    return client.chat([{"role": "user", "content": instruction}]).strip()
+    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": instruction}]
+    return client.chat(messages).strip()
 
 
 def _write_client(cfg: AppConfig) -> OllamaCloudClient:
@@ -156,6 +159,7 @@ def publish_section(
     output_dir: Path,
     numero: int,
     *,
+    system_prompt: str,
     generate_image: bool = True,
 ) -> Path:
     """Prépare le paquet de publication quotidien d'un chapitre.
@@ -170,6 +174,7 @@ def publish_section(
         cfg: Configuration applicative résolue.
         output_dir: Répertoire de sortie du manuel.
         numero: Numéro du chapitre à publier.
+        system_prompt: Prompt système du sujet, envoyé avec la consigne du post.
         generate_image: Si `True` (défaut), génère aussi le visuel de
             couverture via le rôle `model_image` (nécessite ce rôle
             configuré dans `params.yml` ; sinon, la génération d'image est
@@ -200,7 +205,7 @@ def publish_section(
     html = render_article_html(markdown_text, section.titre)
     (publish_dir / "article.html").write_text(html, encoding="utf-8")
 
-    post_draft = generate_post_draft(_write_client(cfg), state.titre_manuel, section)
+    post_draft = generate_post_draft(_write_client(cfg), state.titre_manuel, section, system_prompt)
     (publish_dir / "post.txt").write_text(post_draft + "\n", encoding="utf-8")
 
     if generate_image:
