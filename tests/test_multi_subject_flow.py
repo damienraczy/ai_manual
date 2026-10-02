@@ -35,7 +35,7 @@ TOC = {
             "numero": "I",
             "titre": "Bases",
             "chapitres": [
-                {"numero": 1, "titre": "Le balcon", "description": "d", "sous_sections": [{"numero": "1.1", "titre": "Lumière"}]}
+                {"numero": 1, "titre": "Le balcon", "description": "d", "sous_sections": [{"numero": "1.1", "titre": "Lumière", "description": "mesurer l'ensoleillement"}]}
             ],
         }
     ],

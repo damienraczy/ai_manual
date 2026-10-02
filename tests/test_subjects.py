@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 import yaml
 
@@ -7,6 +9,7 @@ from manual_cli import subjects
 from manual_cli.subjects import (
     Subject,
     SubjectError,
+    delete_subject,
     list_subjects,
     load_subject,
     resolve_slug,
@@ -147,7 +150,7 @@ def test_system_prompt_injects_subject_fields(tmp_path):
     for expected in (VALID_SPEC["role"], VALID_SPEC["objectif"], VALID_SPEC["public"], VALID_SPEC["ton"]):
         assert expected in prompt
     assert "français" in prompt
-    assert "$" not in prompt
+    assert not re.search(r"\$\w", prompt), "placeholder non substitué"
 
 
 def test_system_prompt_omits_optional_sections_when_empty(tmp_path):
@@ -270,6 +273,49 @@ def test_scaffold_refuses_to_overwrite_existing_subject(tmp_path):
 def test_scaffold_rejects_invalid_slug(tmp_path, bad):
     with pytest.raises(SubjectError, match="Identifiant invalide"):
         scaffold_subject(bad, tmp_path)
+
+
+# --- delete_subject -----------------------------------------------------------
+
+
+def test_delete_subject_removes_the_whole_folder(tmp_path):
+    directory = make_subject_dir(tmp_path, "cyber", **{"requirements.yml": "generic: []\n", "subject.yml.bak": "x"})
+    make_subject_dir(tmp_path, "autre")
+
+    assert delete_subject("cyber", tmp_path) == directory
+
+    assert not directory.exists()
+    assert list_subjects(tmp_path) == ["autre"]
+
+
+def test_delete_subject_accepts_an_incomplete_subject(tmp_path):
+    scaffold_subject("brouillon", tmp_path)
+
+    delete_subject("brouillon", tmp_path)
+
+    assert list_subjects(tmp_path) == []
+
+
+def test_delete_subject_rejects_unknown_slug_and_touches_nothing(tmp_path):
+    make_subject_dir(tmp_path, "cyber")
+
+    with pytest.raises(SubjectError, match="Sujet inconnu"):
+        delete_subject("fantome", tmp_path)
+
+    assert list_subjects(tmp_path) == ["cyber"]
+
+
+@pytest.mark.parametrize("bad", ["..", "../cyber", "cyber/..", "."])
+def test_delete_subject_never_leaves_the_subjects_folder(tmp_path, bad):
+    root = tmp_path / "subjects"
+    make_subject_dir(root, "cyber")
+    (tmp_path / "subject.yml").write_text("x", encoding="utf-8")
+
+    with pytest.raises(SubjectError):
+        delete_subject(bad, root)
+
+    assert (root / "cyber").is_dir()
+    assert (tmp_path / "subject.yml").is_file()
 
 
 def test_default_subjects_dir_is_the_repository_subjects_folder():

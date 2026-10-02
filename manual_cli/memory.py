@@ -14,19 +14,34 @@ from pathlib import Path
 from .providers import OllamaCloudClient
 
 MEMORY_FILENAME = "memory.md"
-MAX_DIGEST_CHARS = 6000  # ~1500 tokens, seuil avant recompression forcée
+MAX_DIGEST_CHARS = 12000  # ~3000 tokens, seuil avant recompression forcée
 INITIAL_DIGEST = "(Aucune section rédigée pour l'instant.)"
 
 UPDATE_PROMPT = """# Tâche : mettre à jour la mémoire du manuel
 
 Voici le résumé mémoire actuel du manuel en cours de rédaction, suivi de la section qui vient d'être validée.
-Mets à jour ce résumé pour qu'il reste utile aux sections suivantes, en 400 mots maximum. Il doit contenir :
-- les termes et concepts déjà définis (liste courte, 1 ligne chacun) ;
-- les décisions de terminologie ou de style à respecter ;
-- les exemples déjà utilisés, à ne pas répéter à l'identique ;
-- une phrase de continuité sur ce que le manuel vient de couvrir.
+Mets à jour ce résumé pour qu'il serve aux sections suivantes, en 800 mots maximum. Son but principal est d'éviter les répétitions : \
+garde des entrées précises (pas de généralités) et indique à chaque fois le numéro du chapitre concerné. Utilise exactement ces rubriques :
 
-Réponds uniquement avec le résumé mis à jour, en texte brut ou Markdown léger, sans préambule ni commentaire.
+## Idées déjà développées
+(une ligne par idée ou argument, avec le chapitre où il est traité à fond : « idée — chap. N »)
+
+## Métaphores et images déjà utilisées
+(chaque métaphore, analogie ou image récurrente, avec son chapitre : « image — chap. N »)
+
+## Termes définis
+(un terme par ligne, définition en quelques mots, chapitre)
+
+## Exemples déjà utilisés
+(cas, scénarios et exemples concrets, à ne pas reprendre à l'identique)
+
+## Décisions de terminologie et de style
+(règles à respecter dans la suite)
+
+## Continuité
+(une ou deux phrases sur ce que le manuel vient de couvrir)
+
+Réponds uniquement avec le résumé mis à jour, en Markdown léger, sans préambule ni commentaire.
 
 ## Résumé actuel
 {digest}
@@ -35,8 +50,9 @@ Réponds uniquement avec le résumé mis à jour, en texte brut ou Markdown lég
 {section_text}
 """
 
-COMPRESS_PROMPT = """Le résumé mémoire suivant est trop long. Compresse-le à 400 mots maximum en gardant \
-uniquement l'essentiel (termes définis, décisions de style, continuité).
+COMPRESS_PROMPT = """Le résumé mémoire suivant est trop long. Compresse-le à 800 mots maximum en conservant \
+ses rubriques (idées, métaphores et images, termes définis, exemples, décisions de style, continuité) : \
+fusionne les entrées voisines mais garde les numéros de chapitre et les éléments les plus spécifiques.
 
 {digest}
 """

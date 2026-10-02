@@ -16,6 +16,10 @@
 ### Catalogue de modèles disponibles
 # provider : `ollama` pour tous les rôles texte ; `openai` pour `model_image`.
 # timeout  : en secondes, par modèle (prioritaire sur llm_config.timeout).
+# think    : facultatif, modèles Ollama. `true`, `false` ou un niveau propre au modèle,
+#            transmis tel quel (les niveaux valides : `POST /api/show` -> thinking.values).
+#            Exemple GLM 5.3 : low | high | max (défaut max, réflexion non désactivable).
+#            Toute autre clé dans un modèle est refusée au démarrage.
 models:
 
   deepseek-v4-pro:

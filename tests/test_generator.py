@@ -11,7 +11,7 @@ TOC_JSON = (
     '```json\n'
     '{"titre_manuel": "M", "parties": [{"numero": "I", "titre": "Fondamentaux", '
     '"chapitres": [{"numero": 1, "titre": "Intro", "description": "d", '
-    '"sous_sections": [{"numero": "1.1", "titre": "Def"}]}]}]}\n'
+    '"sous_sections": [{"numero": "1.1", "titre": "Def", "description": "définit le terme"}]}]}]}\n'
     '```'
 )
 
@@ -130,6 +130,38 @@ def test_generate_toc_markdown_contains_chapter_and_subsection(tmp_path, cfg, su
     toc_md = (tmp_path / "00_toc.md").read_text(encoding="utf-8")
     assert "1. Intro" in toc_md
     assert "1.1 Def" in toc_md
+
+
+def test_generate_toc_markdown_shows_the_sous_section_description_in_italics_on_its_own_line(
+    tmp_path, cfg, subject, monkeypatch
+):
+    patch_clients(monkeypatch, FakeClients({"model_write": [TOC_JSON]}))
+
+    generator.generate_toc(cfg, tmp_path, subject)
+
+    lines = (tmp_path / "00_toc.md").read_text(encoding="utf-8").splitlines()
+    assert lines[lines.index("- 1.1 Def") + 1] == "  *définit le terme*"
+
+
+def test_toc_markdown_omits_the_description_line_of_a_sous_section_without_one(tmp_path):
+    state = make_state()
+
+    generator._write_toc_markdown(tmp_path, state)
+
+    lines = (tmp_path / "00_toc.md").read_text(encoding="utf-8").splitlines()
+    assert not any(line.startswith("  *") for line in lines)
+
+
+def test_generate_toc_asks_again_when_a_sous_section_has_no_description(tmp_path, cfg, subject, monkeypatch):
+    without = TOC_JSON.replace(', "description": "définit le terme"', "")
+    fake = FakeClients({"model_write": [without, TOC_JSON]})
+    patch_clients(monkeypatch, fake)
+
+    state = generator.generate_toc(cfg, tmp_path, subject)
+
+    assert len(fake.calls["model_write"]) == 2
+    assert "1.1 Def" in fake.calls["model_write"][1][-1]["content"]
+    assert state.sections[0].sous_sections[0].description == "définit le terme"
 
 
 def test_generate_toc_uses_the_subject_prompts_and_records_the_subject(tmp_path, cfg, subject, monkeypatch):
@@ -479,6 +511,30 @@ def test_write_section_sends_the_given_system_prompt_to_the_writer(tmp_path, cfg
     assert fake.calls["model_write"][0][0] == {"role": "system", "content": "SYS DU SUJET"}
 
 
+def test_write_section_prompt_lists_each_sous_section_with_its_description(tmp_path, cfg, monkeypatch):
+    fake = FakeClients(
+        {
+            "model_write": [good_section_text()],
+            "model_judge": [judge_accept_json()],
+            "model_rewriter": [],
+            "model_think": ["ok"],
+        }
+    )
+    patch_clients(monkeypatch, fake)
+    state = make_state()
+    state.sections[0].sous_sections = [
+        SousSection(numero="1.1", titre="Def", description="définit le terme"),
+        SousSection(numero="1.2", titre="Historique"),
+    ]
+
+    generator.write_section(cfg, tmp_path, state, state.sections[0], REQUIREMENTS, system_prompt="SYS")
+
+    prompt = fake.calls["model_write"][0][1]["content"]
+    assert "- 1.1 Def — définit le terme" in prompt
+    assert "- 1.2 Historique\n" in prompt
+    assert "1.2 Historique —" not in prompt
+
+
 def test_run_write_uses_the_subject_system_prompt_and_requirements(tmp_path, cfg, subject, monkeypatch):
     save_state(tmp_path, make_state().model_copy(update={"subject": "test-sujet"}))
     fake = FakeClients(
@@ -512,3 +568,32 @@ def test_run_write_accepts_a_legacy_manifest_without_subject(tmp_path, cfg, subj
     assert load_state(tmp_path).subject is None
 
     assert generator.run_write(cfg, tmp_path, subject) == []
+
+
+def test_write_section_prompt_contains_the_whole_book_plan(tmp_path, cfg, monkeypatch):
+    fake = FakeClients(
+        {
+            "model_write": [good_section_text()],
+            "model_judge": [judge_accept_json()],
+            "model_rewriter": [],
+            "model_think": ["ok"],
+        }
+    )
+    patch_clients(monkeypatch, fake)
+    state = make_state()
+
+    generator.write_section(cfg, tmp_path, state, state.sections[0], REQUIREMENTS, system_prompt="SYS")
+
+    prompt = fake.calls["model_write"][0][1]["content"]
+    assert "Partie I — Fondamentaux" in prompt
+    assert "CHAPITRE EN COURS" in prompt
+
+
+def test_run_write_refreshes_the_readable_toc_from_a_hand_edited_plan(tmp_path, cfg, subject):
+    save_state(tmp_path, make_state().model_copy(update={"subject": "test-sujet"}))
+    plan = (tmp_path / "toc.yml").read_text(encoding="utf-8")
+    (tmp_path / "toc.yml").write_text(plan.replace("titre: Intro", "titre: Titre édité"), encoding="utf-8")
+
+    generator.run_write(cfg, tmp_path, subject, only_numeros=[])
+
+    assert "Titre édité" in (tmp_path / "00_toc.md").read_text(encoding="utf-8")

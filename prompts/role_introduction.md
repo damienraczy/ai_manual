@@ -1,0 +1,1 @@
+Cette section est l'**introduction** du manuel, pas un chapitre du corps de texte : présente le sujet, son intérêt et le public visé, explique comment lire et utiliser le manuel, et annonce son plan d'après le plan complet ci-dessus. Ne développe pas le fond des chapitres : renvoie-y.

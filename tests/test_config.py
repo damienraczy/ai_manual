@@ -64,6 +64,65 @@ def test_load_config_success(params_file, env_file, monkeypatch):
     assert spec.timeout == 90
 
 
+def params_with_think(tmp_path: Path, think_line: str) -> Path:
+    p = tmp_path / "params.yml"
+    p.write_text(
+        PARAMS_YAML.replace("    timeout: 90\n", f"    timeout: 90\n{think_line}", 1), encoding="utf-8"
+    )
+    return p
+
+
+def test_model_without_think_leaves_it_unset(params_file, env_file, monkeypatch):
+    monkeypatch.setenv("TEST_OLLAMA_URL", "u")
+    monkeypatch.setenv("TEST_OLLAMA_KEY", "k")
+
+    assert load_config(params_path=params_file, env_path=env_file).role("model_write").think is None
+
+
+@pytest.mark.parametrize(
+    ("yaml_value", "expected"), [("low", "low"), ("max", "max"), ("true", True), ("false", False), ("off", False)]
+)
+def test_model_think_level_or_boolean_is_read_as_is(tmp_path, env_file, monkeypatch, yaml_value, expected):
+    monkeypatch.setenv("TEST_OLLAMA_URL", "u")
+    monkeypatch.setenv("TEST_OLLAMA_KEY", "k")
+    p = params_with_think(tmp_path, f"    think: {yaml_value}\n")
+
+    think = load_config(params_path=p, env_path=env_file).role("model_write").think
+    assert think == expected and type(think) is type(expected)
+
+
+@pytest.mark.parametrize("yaml_value", ["3", '""', "[low]", "1.5"])
+def test_model_think_of_another_type_is_rejected(tmp_path, env_file, monkeypatch, yaml_value):
+    monkeypatch.setenv("TEST_OLLAMA_URL", "u")
+    monkeypatch.setenv("TEST_OLLAMA_KEY", "k")
+    p = params_with_think(tmp_path, f"    think: {yaml_value}\n")
+
+    with pytest.raises(ConfigError, match="think"):
+        load_config(params_path=p, env_path=env_file)
+
+
+@pytest.mark.parametrize("key", ["effort", "reasoning_effort", "disable_thinking", "timout"])
+def test_model_with_an_unknown_key_is_rejected_instead_of_silently_ignored(tmp_path, env_file, monkeypatch, key):
+    monkeypatch.setenv("TEST_OLLAMA_URL", "u")
+    monkeypatch.setenv("TEST_OLLAMA_KEY", "k")
+    p = params_with_think(tmp_path, f"    {key}: low\n")
+
+    with pytest.raises(ConfigError, match=rf"writer-model.*{key}"):
+        load_config(params_path=p, env_path=env_file)
+
+
+def test_unknown_key_error_points_to_think_and_lists_known_keys(tmp_path, env_file, monkeypatch):
+    monkeypatch.setenv("TEST_OLLAMA_URL", "u")
+    monkeypatch.setenv("TEST_OLLAMA_KEY", "k")
+    p = params_with_think(tmp_path, "    effort: low\n")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(params_path=p, env_path=env_file)
+
+    message = str(excinfo.value)
+    assert "think" in message and "timeout" in message
+
+
 def test_load_config_uses_fallback_timeout_when_model_has_none(tmp_path, env_file, monkeypatch):
     p = tmp_path / "params.yml"
     p.write_text(

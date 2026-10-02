@@ -384,3 +384,26 @@ def scaffold_subject(slug: str, subjects_dir: Path = SUBJECTS_DIR) -> Path:
     shutil.copyfile(SUBJECT_TEMPLATE_PATH, directory / SUBJECT_FILENAME)
     (directory / REQUIREMENTS_FILENAME).write_text(REQUIREMENTS_STUB, encoding="utf-8")
     return directory
+
+
+def delete_subject(slug: str, subjects_dir: Path = SUBJECTS_DIR) -> Path:
+    """Supprime définitivement le dossier d'un sujet.
+
+    Un sujet incomplet ou invalide peut être supprimé : seule la présence de
+    son `subject.yml` est exigée. Le manuel déjà généré (`output/<slug>/`)
+    n'est pas touché ici.
+
+    Args:
+        slug: Identifiant du sujet à supprimer.
+        subjects_dir: Dossier contenant les sujets.
+
+    Returns:
+        Le dossier supprimé.
+
+    Raises:
+        SubjectError: Si l'identifiant ne désigne pas un sujet existant.
+    """
+    resolve_slug(slug, subjects_dir)
+    directory = subjects_dir / slug
+    shutil.rmtree(directory)
+    return directory

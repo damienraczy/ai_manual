@@ -14,6 +14,8 @@ Il fonctionne **sujet par sujet**. Le dépôt fournit un sujet complet (un manue
 - **Rien n'est détruit en silence** : chaque modification importante laisse une sauvegarde ou une archive (voir [Garanties](#garanties-et-sécurités)).
 - **Rien n'est publié automatiquement** : la préparation d'une publication LinkedIn est fournie, la publication reste manuelle.
 
+> La documentation complète et exhaustive est dans [`MANUAL.md`](MANUAL.md).
+
 ## Sommaire
 
 - [Vocabulaire](#vocabulaire)
@@ -41,11 +43,13 @@ Il fonctionne **sujet par sujet**. Le dépôt fournit un sujet complet (un manue
 | Terme | Sens |
 |---|---|
 | **Sujet** | Le cadrage d'un manuel : de quoi il parle, pour qui, à quel niveau, sur quel ton, avec quelle progression et quels critères de qualité. Un dossier `subjects/<identifiant>/`. |
-| **Plan** (ou table des matières, TOC) | Les parties, chapitres et sous-sections du manuel, générés par le modèle et enregistrés dans `00_toc.md` et `manifest.json`. |
-| **Section** (ou chapitre) | L'unité de rédaction : un chapitre du plan, écrit dans son propre fichier Markdown. Statuts : `pending` (à écrire), `done` (accepté), `failed` (refusé par la relecture). |
+| **Plan** (ou table des matières, TOC) | Les parties, chapitres et sous-sections du manuel, générés par le modèle et enregistrés dans `toc.yml` (le plan, modifiable à la main) et `manifest.json` (le suivi) ; `00_toc.md` n'en est qu'une vue lisible. Chaque chapitre et chaque sous-section porte une `description` d'une phrase, transmise au rédacteur. |
+| **Section** (ou chapitre) | L'unité de rédaction : un chapitre du plan, écrit dans son propre fichier Markdown. L'**introduction** (section 0) et la **conclusion** (section N+1) sont des sections hors des parties, facultatives. Statuts : `pending` (à écrire), `done` (accepté), `failed` (refusé par la relecture, ou marqueur de fin absent). |
 | **Rôles LLM** | `model_write` (rédacteur), `model_judge` (juge), `model_rewriter` (réécrivain), `model_think` (mémoire), `model_image` (couverture, optionnel). Chacun peut utiliser un modèle différent. |
 | **Critères** | Les exigences de qualité appliquées par le juge : communes à tous les sujets, propres au sujet, ou propres à une partie. Sévérité `bloquant` (force une réécriture) ou `recommande` (signalé sans bloquer). |
-| **Mémoire** | Le résumé cumulé de ce qui a déjà été écrit (`memory.md`), transmis à chaque nouvelle rédaction pour éviter contradictions et redites. |
+| **Mémoire** | Le résumé structuré de ce qui a déjà été écrit (`memory.md`) : idées développées, métaphores et images, termes définis, exemples, décisions de style, chacun avec son chapitre. Transmis à chaque rédaction pour éviter contradictions et redites. |
+| **Plan de l'ouvrage** | Le plan complet, transmis à chaque rédaction avec le chapitre en cours signalé, pour que chaque section sache ce que contiennent les autres. |
+| **Glossaire** | `glossaire.md`, généré par `manual glossary` à partir des chapitres terminés. |
 
 ## Ce que fait le programme
 
@@ -56,10 +60,10 @@ sujet ──► plan ──► rédaction ──► relecture (juge) ──► a
 ```
 
 1. **Cadrage du sujet.** Rôle de l'auteur, public, niveau, ton, progression, exclusions, critères propres. Peut être rédigé par le LLM à partir d'un descriptif (court ou long, en fichier), puis retouché par consigne ou à la main.
-2. **Plan.** Un LLM propose une table des matières complète, à relire et à améliorer avant de commencer à écrire.
-3. **Rédaction.** Chaque chapitre est écrit en suivant strictement le plan ; plusieurs chapitres peuvent l'être en parallèle.
+2. **Plan.** Un LLM propose une table des matières complète (introduction, parties, chapitres, conclusion), à relire et à améliorer avant de commencer à écrire. Sa réponse est un JSON validé (trois essais au plus, avec renvoi de l'erreur au modèle) : chaque chapitre et chaque sous-section doit avoir sa description. Le plan est enregistré dans `toc.yml`, sans numéros, et se modifie à la main.
+3. **Rédaction.** Chaque chapitre est écrit en suivant strictement le plan (titre, sous-sections et ce que chacune doit couvrir), en connaissant le plan complet de l'ouvrage et la mémoire ; plusieurs chapitres peuvent l'être en parallèle. L'introduction et la conclusion sont écrites après les chapitres.
 4. **Relecture automatique.** Le juge évalue chaque chapitre selon les critères. Si un critère bloquant n'est pas rempli, le réécrivain corrige et le juge relit, dans la limite de `--max-rewrite` cycles.
-5. **Mémoire.** Après chaque chapitre accepté, le résumé cumulé est mis à jour.
+5. **Mémoire.** Après chaque chapitre accepté, le résumé structuré est mis à jour (idées, métaphores, termes et exemples déjà utilisés), pour limiter les répétitions.
 6. **Reprise et amélioration.** L'avancement est sauvegardé chapitre par chapitre : on peut interrompre, reprendre, refaire un chapitre, l'améliorer à partir de son texte ou améliorer le plan sans repartir de zéro.
 
 Un chapitre n'est marqué `done` que si le juge l'accepte **et** que son marqueur de fin est présent dans le texte.
@@ -121,12 +125,12 @@ cp params.example.yml params.yml
 
 `params.yml` contient deux parties :
 
-- **`models:`** : le catalogue des modèles disponibles. Pour chacun : `provider`, `name`, `url` et `api_key` (les *noms* des variables de `~/.env`, pas leurs valeurs) et `timeout` en secondes.
-- **`llm_config:`** : l'affectation d'un modèle à chaque rôle.
+- **`models:`** : le catalogue des modèles disponibles. Pour chacun : `provider`, `name`, `url` et `api_key` (les *noms* des variables de `~/.env`, pas leurs valeurs) et `timeout` en secondes. Facultatif : `think` (modèles Ollama), transmis tel quel au champ `think` de l'API : `true`, `false` ou un niveau propre au modèle. Sans lui, le modèle garde son défaut. Les niveaux acceptés se lisent dans `thinking.values` de `POST /api/show` (par exemple GLM 5.3 : `low`, `high`, `max`, avec `max` par défaut ; sa réflexion ne peut pas être désactivée, `false` est sans effet). Pour réduire la réflexion d'un modèle, déclarer une seconde entrée du même modèle avec `think: low`. Toute autre clé dans un modèle (ex. `effort`) est refusée au démarrage plutôt qu'ignorée.
+- **`llm_config:`** : l'affectation d'un modèle à chaque rôle (`llm:`), et `timeout`, le délai en secondes appliqué aux modèles qui n'en définissent pas.
 
 | Rôle | Fonction | Fournisseur autorisé |
 |---|---|---|
-| `model_write` | rédige les sujets, la table des matières (et son amélioration) et les chapitres | `ollama` |
+| `model_write` | rédige les sujets, la table des matières (et son amélioration), les chapitres et le glossaire | `ollama` |
 | `model_judge` | relit et valide chaque chapitre | `ollama` |
 | `model_think` | met à jour la mémoire inter-chapitres | `ollama` |
 | `model_rewriter` | réécrit un chapitre rejeté | `ollama` |
@@ -155,7 +159,7 @@ Pour le sujet fourni : `manual --subject prompt-engineering init`, puis `write`.
 
 Deux options se placent **avant** la sous-commande :
 
-- `--subject SUJET` choisit le sujet (un dossier de `subjects/`). Facultatif tant qu'il n'existe qu'un seul sujet ; **dès qu'il y en a plusieurs, il devient obligatoire** pour `init`, `write`, `redo`, `improve`, `improve-toc`, `status`, `publish` et `traces` (sauf `status`, `publish` et `traces` si `--output` est donné).
+- `--subject SUJET` choisit le sujet (un dossier de `subjects/`). Facultatif tant qu'il n'existe qu'un seul sujet ; **dès qu'il y en a plusieurs, il devient obligatoire** pour `init`, `write`, `redo`, `improve`, `improve-toc`, `status`, `glossary`, `publish` et `traces` (sauf `status`, `glossary`, `publish` et `traces` si `--output` est donné). `subject criteria` et `subject edit` acceptent aussi `--subject` à la place de l'identifiant.
 - `--output DIR` choisit le répertoire de sortie (défaut : `output/<sujet>/` dans le dépôt).
 
 ### Génération
@@ -163,12 +167,13 @@ Deux options se placent **avant** la sous-commande :
 | Commande | Effet |
 |---|---|
 | `manual init [--force]` | Génère le plan. Refuse d'écraser un plan existant sans `--force` ; avec `--force`, l'avancement **et la mémoire sont réinitialisés** (les fichiers de chapitres restent sur le disque). |
-| `manual write` | Rédige toutes les sections en attente (4 workers en parallèle par défaut). |
-| `manual write -s 1 3 5-8` | Rédige seulement les sections 1, 3 et 5 à 8. |
+| `manual write` | Rédige toutes les sections qui ne sont pas `done`, c'est-à-dire en attente **et** en échec (`failed`), 4 workers en parallèle par défaut : d'abord les chapitres, puis l'introduction et la conclusion. Relancer la commande reprend donc après une interruption ou un échec. |
+| `manual write -s 1 3 5-8` | Rédige seulement les sections 1, 3 et 5 à 8 (`-s 0` : l'introduction). |
 | `manual write -w 8` | Utilise 8 workers en parallèle. |
 | `manual write --max-rewrite 3` | Autorise jusqu'à 3 cycles de réécriture après un rejet du juge (défaut : 2). |
-| `manual status` | Affiche l'état de chaque section (`pending`, `done`, `failed`) et le total. |
+| `manual status` | Affiche l'état de chaque section (`pending`, `done`, `failed`) et le total. Code de sortie `1` si aucun plan n'existe encore. |
 | `manual redo N [--max-rewrite K]` | Régénère la section N **depuis zéro** (sans relire l'existant). |
+| `manual glossary` | Génère `glossaire.md` à partir des chapitres terminés : extraction des termes chapitre par chapitre, puis consolidation (doublons fusionnés, tri alphabétique, chapitres cités). |
 
 ### Amélioration
 
@@ -187,6 +192,7 @@ Deux options se placent **avant** la sous-commande :
 | `manual subject edit [SLUG]` | Ouvre `subject.yml` dans `$VISUAL` / `$EDITOR`, puis le valide. |
 | `manual subject criteria [SLUG] [--force]` | Propose des critères de relecture par partie du plan généré. |
 | `manual subject check [SLUG] [--show]` | Valide un sujet ; `--show` affiche les prompts tels qu'ils seront envoyés. |
+| `manual subject delete SLUG [-y] [--with-output]` | Supprime définitivement un sujet, après confirmation. |
 
 ### Publication et diagnostic
 
@@ -230,13 +236,14 @@ Le modèle (`model_write`) propose tous les champs de `subject.yml` et quelques 
 
 **À la main** : sans descriptif, `manual subject new <identifiant>` crée un squelette dont les champs valent « À COMPLÉTER » (refusés tant qu'ils restent tels quels), à remplir avec `manual subject edit <identifiant>`. Un identifiant ne contient que des minuscules, des chiffres et des tirets.
 
-### Retoucher un sujet
+### Retoucher ou supprimer un sujet
 
 | Commande | Effet |
 |---|---|
 | `manual subject refine SLUG "consigne"` ou `refine SLUG -f consigne.txt` | Le modèle applique la consigne (ex. « ton plus décontracté, sans juridique »), donnée en ligne ou dans un fichier, et affiche les champs modifiés. L'ancienne version est conservée dans `subject.yml.bak`. |
 | `manual subject edit [SLUG]` | Ouvre `subject.yml` dans l'éditeur, puis le valide à la fermeture. |
 | `manual subject check [SLUG] [--show]` | Valide le sujet ; `--show` affiche les prompts tels qu'ils seront envoyés. |
+| `manual subject delete SLUG [-y] [--with-output]` | Supprime le dossier `subjects/SLUG/` (sujet incomplet compris) après confirmation `[o/N]` ; `-y` supprime sans demander. L'identifiant est obligatoire, même s'il n'y a qu'un sujet. Le manuel déjà généré dans `output/SLUG/` est **conservé** sauf avec `--with-output` (incompatible avec l'option globale `--output`). |
 
 Le mieux est de retoucher le sujet **avant** `init` : le plan est généré à partir du sujet. Après coup, `manual improve-toc` adapte le plan sans rien perdre.
 
@@ -286,13 +293,17 @@ Ils sont alors envoyés tels quels : c'est à vous de conserver le format de sor
 Flux de travail habituel :
 
 1. Choisir ou créer le sujet : `manual subject list`, ou `manual subject new SLUG "descriptif"` puis `manual subject check SLUG --show`.
-2. `manual init`, puis relire `output/<sujet>/00_toc.md`. Améliorer le plan avec `manual improve-toc`, ou repartir de zéro avec `manual init --force` (tant qu'aucun chapitre n'est écrit).
+2. `manual init`, puis relire `output/<sujet>/00_toc.md`. Modifier le plan à la main (`toc.yml`), l'améliorer avec `manual improve-toc`, ou repartir de zéro avec `manual init --force` (tant qu'aucun chapitre n'est écrit).
 3. Facultatif : `manual subject criteria` pour ajouter des critères de relecture par partie.
-4. `manual write` ; en cas d'interruption, relancer la même commande : les sections terminées sont conservées.
-5. `manual status` pour repérer les sections `failed`, puis `manual redo N` (refaire de zéro) ou `manual improve N` (améliorer l'existant) pour celles qui ne conviennent pas.
-6. Facultatif : `manual publish N` pour préparer une publication LinkedIn.
+4. `manual write` ; en cas d'interruption ou d'échec, relancer la même commande : les sections terminées (`done`) sont conservées, les autres sont reprises.
+5. `manual status` pour repérer les sections `failed`, puis `manual redo N` (refaire de zéro) ou `manual improve N` (améliorer l'existant) pour celles qui ne conviennent pas. `write`, `redo` et `improve` retournent `0` même si des sections échouent : dans un script, lire `manual status`.
+6. Facultatif : `manual glossary` pour générer le glossaire, puis `manual publish N` pour préparer une publication LinkedIn.
 
 Conseil : rédiger d'abord un chapitre seul (`manual write -s 1`) pour juger la qualité et ajuster sujet, critères ou modèles avant de lancer le manuel entier.
+
+### Modifier le plan à la main
+
+`output/<sujet>/toc.yml` est la source de vérité du plan : titres et descriptions uniquement, **aucun numéro à maintenir** (parties en chiffres romains, chapitres de 1 à N, sous-sections `chapitre.rang` sont déduits de la position). Un chapitre ajouté, retitré ou déplacé repart en attente ; modifier une description ne change pas le statut (utiliser `redo` ou `improve`). L'introduction et la conclusion s'y déclarent par les clés facultatives `introduction:` et `conclusion:`. Voir [`MANUAL.md`](MANUAL.md#6-le-plan--tocyml-introduction-et-conclusion).
 
 ### Suivi des appels LLM
 
@@ -336,10 +347,11 @@ manual improve-toc -i "ajoute un chapitre sur l'évaluation, fusionne les chapit
 manual improve-toc -f consigne.txt
 ```
 
-- **Les chapitres déjà rédigés (`done`) sont figés** : le modèle doit les conserver avec le même numéro, le même titre et les mêmes sous-sections ; sinon sa réponse est refusée et il est prié de corriger (trois essais, puis la commande s'arrête sans rien modifier). Le reste (chapitres non rédigés, parties) peut être réordonné, fusionné, scindé, ajouté ou supprimé, avec une numérotation consécutive de 1 à N.
+- **Les chapitres déjà rédigés (`done`) sont figés** : le modèle doit les conserver avec le même numéro, le même titre et les mêmes sous-sections (numéros et titres ; leur `description` peut être précisée ou ajoutée, sans renvoyer le chapitre en attente) ; sinon sa réponse est refusée et il est prié de corriger (trois essais, puis la commande s'arrête sans rien modifier). Le reste (chapitres non rédigés, parties) peut être réordonné, fusionné, scindé, ajouté ou supprimé, avec une numérotation consécutive de 1 à N.
 - **L'avancement est préservé** : les chapitres inchangés gardent leur statut ; les chapitres nouveaux ou modifiés repassent en attente, à rédiger avec `manual write`.
-- **Rien n'est supprimé** : les fichiers de chapitres et la mémoire ne sont jamais touchés (les fichiers que le nouveau plan n'utilise plus sont listés, laissés en place). La version précédente du plan est archivée dans `output/<sujet>/toc_history/<date-heure>/` (`manifest.json` et `00_toc.md`), à chaque exécution.
+- **Rien n'est supprimé** : les fichiers de chapitres et la mémoire ne sont jamais touchés (les fichiers que le nouveau plan n'utilise plus sont listés, laissés en place). La version précédente du plan est archivée dans `output/<sujet>/toc_history/<date-heure>/` (`manifest.json`, `toc.yml` et `00_toc.md`), à chaque exécution.
 - **Critères par partie** : si une partie est renommée, les critères propres à l'ancien titre n'ont plus de correspondance ; la commande le signale (voir `manual subject criteria`).
+- **Manifestes anciens** : un manifeste créé avant l'ajout des descriptions de sous-sections se relit sans migration (descriptions vides). `improve-toc` exige ensuite une description pour toutes les sous-sections, y compris celles des chapitres figés.
 - Avant d'avoir rédigé quoi que ce soit, tout le plan est modifiable.
 
 ## Publication LinkedIn (optionnelle)
@@ -358,13 +370,16 @@ Dans le répertoire de sortie (`output/<sujet>/` par défaut) :
 
 | Fichier | Contenu |
 |---|---|
-| `00_toc.md` | Le plan généré, lisible |
+| `00_toc.md` | Vue lisible du plan (régénérée par `init`, `improve-toc` et `write`) : description du chapitre en italique sous son titre, description de chaque sous-section en italique sous son intitulé |
+| `00_introduction.md`, `NN_conclusion.md` | Introduction et conclusion, si le plan en prévoit |
+| `glossaire.md` | Le glossaire (`manual glossary`) |
 | `NN_titre-du-chapitre.md` | Un fichier Markdown par chapitre |
 | `NN_titre-du-chapitre.md.bak` | Version précédente d'un chapitre, après `improve` |
 | `NN_titre-du-chapitre.candidate.md` | Version d'`improve` refusée par la relecture (l'original est intact) |
-| `manifest.json` | L'état de chaque section (statut, tentatives, dernier verdict) et le sujet utilisé |
-| `memory.md` | Le résumé cumulé transmis aux rédactions suivantes |
-| `toc_history/<date-heure>/` | Anciennes versions du plan (`manifest.json`, `00_toc.md`), archivées par `improve-toc` |
+| `toc.yml` | Le plan, **source de vérité et fichier à éditer à la main** : parties, chapitres, sous-sections et descriptions, sans aucun numéro (parties en chiffres romains, chapitres 1..N et sous-sections `chapitre.rang` sont déduits de la position). Un chapitre ajouté ou dont le titre change repart en attente ; modifier une description ne change pas le statut (utilise `redo` ou `improve`) |
+| `manifest.json` | Le suivi seul : le sujet et, par chapitre, `numero`, `titre`, `status`, `attempts`, `last_verdict`. Un ancien manifeste contenant le plan est relu tel quel puis migré à la prochaine sauvegarde |
+| `memory.md` | Le résumé structuré transmis aux rédactions suivantes |
+| `toc_history/<date-heure>/` | Anciennes versions du plan (`manifest.json`, `toc.yml`, `00_toc.md`), archivées par `improve-toc` |
 | `traces/calls.jsonl` | Le journal de tous les appels LLM |
 | `publish/<chapitre>/` | Les paquets de publication LinkedIn |
 
@@ -373,12 +388,14 @@ Dans `subjects/<sujet>/` : `subject.yml`, `requirements.yml`, éventuellement `s
 ## Garanties et sécurités
 
 - **Échec explicite, jamais de repli silencieux** : une configuration manquante, une variable d'environnement absente ou une erreur d'un fournisseur lève une erreur claire.
+- **Configuration stricte** : une clé inconnue dans un modèle de `params.yml` (ex. `effort`) ou un `think` d'un mauvais type est refusé au démarrage, jamais ignoré.
 - **Rien n'est écrit avant validation** : la réponse d'un modèle qui doit être structurée (sujet, critères, plan) est validée d'abord ; en cas d'échec, les fichiers existants restent intacts.
 - **Sauvegardes systématiques** : `.bak` (sujet, critères, chapitres améliorés), `.candidate.md` (version refusée), `toc_history/` (anciens plans).
 - **Le travail écrit est protégé** : `improve-toc` fige les chapitres déjà rédigés et ne touche jamais aux fichiers de chapitres ni à la mémoire ; `improve` ne remplace un chapitre que si la nouvelle version est acceptée.
 - **Cohérence sujet / manuel** : le manifeste mémorise le sujet ; `write`, `improve` et `improve-toc` refusent de travailler sur un manuel généré pour un autre sujet.
 - **Double contrôle d'un chapitre** : `done` exige l'accord du juge *et* le marqueur de fin ; de plus, un critère bloquant listé par le juge force la réécriture même s'il a répondu « accepter ».
 - **Aucune publication automatique** : `manual publish` ne prépare que des fichiers à copier soi-même.
+- **Erreurs lisibles** : toute erreur connue (configuration, fournisseur, validation, sujet) s'affiche `Erreur : …` sur la sortie d'erreur avec le code de sortie `1`, sans trace d'appels.
 - **Secrets hors du dépôt** : les clés vivent dans `~/.env`, `params.yml` ne contient que des noms de variables.
 
 ## Personnaliser les prompts
@@ -388,7 +405,9 @@ Tout le texte envoyé aux modèles est dans `prompts/` (les prompts spécifiques
 | Fichier | Rôle |
 |---|---|
 | `system_prompt.md`, `toc_instruction.md` | Gabarits remplis par `subject.yml` (prompt système, génération du plan) |
-| `section_instruction.md` | Rédaction d'un chapitre |
+| `section_instruction.md` | Rédaction d'une section |
+| `role_introduction.md`, `role_conclusion.md` | Consigne propre à l'introduction et à la conclusion |
+| `glossary_extract_instruction.md`, `glossary_merge_instruction.md` | Extraction des termes d'un chapitre et consolidation du glossaire |
 | `judge_instruction.md` | Relecture d'un chapitre |
 | `rewrite_instruction.md` | Réécriture après un rejet |
 | `improve_instruction.md`, `improve_default_instruction.md` | Amélioration d'un chapitre et consigne par défaut |
@@ -407,10 +426,15 @@ manual_cli/            code source
   generator.py         plan, rédaction, relecture, amélioration, mémoire
   providers.py         clients Ollama Cloud / OpenAI (reprises, traces)
   config.py            params.yml et ~/.env, relus à chaque appel
-  state.py, memory.py  manifeste et résumé cumulé
-  parsing.py           extraction et validation du JSON des modèles
+  state.py, memory.py  plan (`toc.yml`), suivi (`manifest.json`) et résumé structuré
+  glossary.py          glossaire : extraction par chapitre et consolidation
+  schemas.py           schémas du plan (introduction, parties, chapitres, sous-sections, conclusion) et du verdict du juge
+  parsing.py           extraction et validation du JSON des modèles (nouvelles tentatives)
+  patterns.py          lecture des sélections de sections (`-s 1 3 5-8`)
+  requirements_loader.py  lecture et rendu des critères de relecture
   publish.py           paquet de publication LinkedIn
   tracing.py, web/     journal des appels et interface de consultation
+  mcp_affinity/        script annexe indépendant (liste les outils d'un serveur MCP local), non utilisé par `manual`
 prompts/               gabarits de prompts communs à tous les sujets
 subjects/              un dossier par sujet de manuel (subject.yml, critères propres)
 requirements/          critères de qualité communs utilisés par le juge
@@ -436,7 +460,10 @@ Le projet suit un développement piloté par les tests (RED → GREEN → REFACT
 - **Numérotation figée** : avec `improve-toc`, les chapitres déjà rédigés gardent leur numéro ; on ne peut pas en insérer un nouveau *entre* deux chapitres écrits (les nouveaux chapitres se placent parmi les numéros non figés).
 - **Critères par partie fragiles** : ils sont indexés sur le titre exact des parties générées ; si le plan est régénéré avec d'autres titres, relancer `manual subject criteria`.
 - **Mémoire et `improve`** : le résumé cumulé mentionne déjà la version actuelle d'un chapitre avant son amélioration ; des redites sur ce chapitre y sont possibles.
-- **Commentaires YAML** : `subject refine` et `subject criteria` réécrivent leur fichier, les commentaires y sont perdus (l'ancienne version reste dans le `.bak`).
+- **Redites** : réduites par le plan de l'ouvrage et la mémoire structurée, pas éliminées ; un digest ancien n'a pas les nouvelles rubriques, qui se remplissent au fil des sections acceptées.
+- **Introduction et conclusion** : `improve-toc` ne les fige pas (modifiées, elles repartent en attente) ; la conclusion change de numéro quand le nombre de chapitres change.
+- **Glossaire** : régénéré en entier, uniquement à partir des chapitres terminés.
+- **Commentaires YAML** : `subject refine` et `subject criteria` réécrivent leur fichier, les commentaires y sont perdus (l'ancienne version reste dans le `.bak`). `toc.yml` n'est réécrit que si le plan change réellement.
 - **Publication LinkedIn** : l'API de LinkedIn ne permet pas de créer des articles ; la publication reste manuelle.
 - **Durée** : plusieurs heures pour un manuel complet avec un modèle à longues chaînes de raisonnement.
 

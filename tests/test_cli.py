@@ -628,6 +628,122 @@ def test_subject_check_reports_an_incomplete_subject(subjects_dir, capsys):
     assert "À COMPLÉTER" in capsys.readouterr().err
 
 
+def test_subject_delete_removes_the_subject_when_confirmed(subjects_dir, monkeypatch, capsys):
+    add_subject(subjects_dir, "autre")
+    asked = []
+    monkeypatch.setattr("builtins.input", lambda prompt="": asked.append(prompt) or "o")
+
+    rc = cli.main(["subject", "delete", "test-sujet"])
+
+    assert rc == 0
+    assert not (subjects_dir / "test-sujet").exists()
+    assert (subjects_dir / "autre").is_dir()
+    assert "test-sujet" in asked[0]
+    assert "supprimé" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("answer", ["", "n", "non", "peut-être"])
+def test_subject_delete_is_cancelled_unless_confirmed(subjects_dir, monkeypatch, capsys, answer):
+    monkeypatch.setattr("builtins.input", lambda prompt="": answer)
+
+    rc = cli.main(["subject", "delete", "test-sujet"])
+
+    assert rc == 1
+    assert (subjects_dir / "test-sujet" / "subject.yml").is_file()
+    assert "annulée" in capsys.readouterr().err
+
+
+def test_subject_delete_is_cancelled_without_a_terminal(subjects_dir, monkeypatch, capsys):
+    def no_stdin(prompt=""):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", no_stdin)
+
+    rc = cli.main(["subject", "delete", "test-sujet"])
+
+    assert rc == 1
+    assert (subjects_dir / "test-sujet").is_dir()
+    assert "--yes" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag", ["-y", "--yes"])
+def test_subject_delete_skips_the_prompt_with_yes(subjects_dir, monkeypatch, flag):
+    def forbidden(prompt=""):
+        raise AssertionError("aucune confirmation attendue")
+
+    monkeypatch.setattr("builtins.input", forbidden)
+
+    assert cli.main(["subject", "delete", "test-sujet", flag]) == 0
+    assert not (subjects_dir / "test-sujet").exists()
+
+
+def test_subject_delete_requires_a_slug_even_with_a_single_subject(subjects_dir):
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["subject", "delete"])
+
+
+def test_subject_delete_does_not_take_a_slug_from_flags(subjects_dir):
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["subject", "delete", "-y"])
+
+
+def test_subject_delete_reports_an_unknown_subject(subjects_dir, capsys):
+    rc = cli.main(["subject", "delete", "fantome", "-y"])
+
+    assert rc == 1
+    assert "Sujet inconnu" in capsys.readouterr().err
+    assert (subjects_dir / "test-sujet").is_dir()
+
+
+def test_subject_delete_keeps_the_generated_manual_by_default(tmp_path, subjects_dir, capsys):
+    output = tmp_path / "_output" / "test-sujet"
+    output.mkdir(parents=True)
+    (output / "00_toc.md").write_text("plan", encoding="utf-8")
+
+    rc = cli.main(["subject", "delete", "test-sujet", "-y"])
+
+    assert rc == 0
+    assert (output / "00_toc.md").is_file()
+    assert "--with-output" in capsys.readouterr().out
+
+
+def test_subject_delete_with_output_removes_the_generated_manual(tmp_path, subjects_dir, capsys):
+    output = tmp_path / "_output" / "test-sujet"
+    output.mkdir(parents=True)
+    (output / "00_toc.md").write_text("plan", encoding="utf-8")
+    other = tmp_path / "_output" / "autre"
+    other.mkdir()
+
+    rc = cli.main(["subject", "delete", "test-sujet", "-y", "--with-output"])
+
+    assert rc == 0
+    assert not output.exists()
+    assert other.is_dir()
+    assert "Manuel généré supprimé" in capsys.readouterr().out
+
+
+def test_subject_delete_with_output_tolerates_a_missing_manual(subjects_dir):
+    assert cli.main(["subject", "delete", "test-sujet", "-y", "--with-output"]) == 0
+
+
+def test_subject_delete_prompt_mentions_the_manual_when_it_will_be_removed(tmp_path, subjects_dir, monkeypatch):
+    (tmp_path / "_output" / "test-sujet").mkdir(parents=True)
+    asked = []
+    monkeypatch.setattr("builtins.input", lambda prompt="": asked.append(prompt) or "n")
+
+    cli.main(["subject", "delete", "test-sujet", "--with-output"])
+
+    assert "manuel généré" in asked[0]
+
+
+def test_subject_delete_refuses_an_explicit_output_option(tmp_path, subjects_dir, capsys):
+    rc = cli.main(["--output", str(tmp_path / "ailleurs"), "subject", "delete", "test-sujet", "-y", "--with-output"])
+
+    assert rc == 1
+    assert "--output" in capsys.readouterr().err
+    assert (subjects_dir / "test-sujet").is_dir()
+
+
 def test_subject_requires_an_action():
     parser = cli.build_parser()
     with pytest.raises(SystemExit):
@@ -1118,3 +1234,26 @@ def test_improve_toc_summary_omits_empty_sections(tmp_path, monkeypatch, capsys)
     assert "toc_history" in out
     assert "Fichiers de chapitres" not in out
     assert "Critères" not in out
+
+
+# --- glossary ----------------------------------------------------------------------
+
+
+def test_glossary_command_reports_the_written_file(tmp_path, monkeypatch, capsys):
+    from manual_cli.glossary import GlossaryResult
+
+    received = {}
+
+    def fake_build(cfg, out):
+        received["out"] = out
+        return GlossaryResult(path=out / "glossaire.md", entries=[object(), object()], chapters=[1, 2])
+
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    monkeypatch.setattr(cli, "build_glossary", fake_build)
+
+    rc = cli.main(["--output", str(tmp_path), "glossary"])
+
+    assert rc == 0
+    assert received["out"] == tmp_path
+    out = capsys.readouterr().out
+    assert "2 termes" in out and "glossaire.md" in out

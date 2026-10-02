@@ -226,6 +226,8 @@ class OllamaCloudClient:
         payload: dict = {"model": self.spec.name, "messages": messages, "stream": False}
         if temperature is not None:
             payload["options"] = {"temperature": temperature}
+        if self.spec.think is not None:
+            payload["think"] = self.spec.think
 
         def _call() -> str:
             resp = requests.post(url, json=payload, headers=headers, timeout=self.spec.timeout)

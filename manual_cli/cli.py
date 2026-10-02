@@ -7,7 +7,7 @@ Sous-commandes : `init` (génère la table des matières), `write`
 `improve-toc` (améliore la table des matières en préservant l'existant), `publish`
 (prépare le paquet de publication LinkedIn d'un chapitre terminé),
 `traces` (interface web de visualisation des appels LLM journalisés) et
-`subject` (liste, crée, retouche, édite et contrôle les sujets de manuel,
+`subject` (liste, crée, retouche, édite, contrôle et supprime les sujets de manuel,
 dont trois opérations assistées par LLM : création depuis un descriptif,
 retouche par consigne et critères par partie).
 
@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -27,18 +28,20 @@ from pathlib import Path
 from . import tracing
 from .config import ConfigError, load_config
 from .generator import GeneratorError, generate_toc, improve_toc, run_improve, run_write
+from .glossary import build_glossary
 from .parsing import ParsingError
 from .patterns import PatternError, parse_section_patterns
 from .providers import ProviderError
 from .publish import PublishError, publish_section
 from .requirements_loader import RequirementsError
-from .state import load_state, state_exists
+from .state import StateError, load_state, state_exists
 from .subject_author import generate_subject, propose_partie_criteria, refine_subject
 from .subjects import (
     SUBJECT_FILENAME,
     SUBJECTS_DIR,
     Subject,
     SubjectError,
+    delete_subject,
     list_subjects,
     load_subject,
     resolve_slug,
@@ -221,6 +224,26 @@ def cmd_improve(args: argparse.Namespace) -> int:
                 f"[NON RETENU] {section.numero}. {section.titre} : la nouvelle version n'a pas passé la relecture ; "
                 f"l'original est conservé, version candidate dans {result.path}"
             )
+    return 0
+
+
+def cmd_glossary(args: argparse.Namespace) -> int:
+    """Génère `glossaire.md` à partir des chapitres terminés.
+
+    Args:
+        args: Arguments parsés (`output`, `subject`).
+
+    Returns:
+        `0` en cas de succès.
+
+    Raises:
+        GeneratorError: Si aucun chapitre n'est terminé (capturée par `main`).
+    """
+    cfg = load_config()
+    output_dir = _output_dir(args)
+    tracing.configure(output_dir)
+    result = build_glossary(cfg, output_dir)
+    print(f"Glossaire écrit : {len(result.entries)} termes, issus des chapitres {', '.join(map(str, result.chapters))} → {result.path}")
     return 0
 
 
@@ -418,6 +441,57 @@ def cmd_subject_refine(args: argparse.Namespace) -> int:
     return 0
 
 
+def _confirm(question: str) -> bool:
+    """Pose une question fermée sur le terminal.
+
+    Args:
+        question: Question affichée, sans la mention des réponses possibles.
+
+    Returns:
+        `True` seulement pour une réponse explicite « o », « oui », « y » ou « yes » ;
+        toute autre réponse, ou l'absence d'entrée standard, vaut refus.
+    """
+    try:
+        answer = input(f"{question} [o/N] ")
+    except EOFError:
+        return False
+    return answer.strip().lower() in ("o", "oui", "y", "yes")
+
+
+def cmd_subject_delete(args: argparse.Namespace) -> int:
+    """Supprime un sujet, après confirmation, et facultativement son manuel généré.
+
+    Args:
+        args: Arguments parsés (`slug`, `yes`, `with_output`, `output`).
+
+    Returns:
+        `0` si le sujet est supprimé, `1` si la suppression est annulée.
+
+    Raises:
+        SubjectError: Si le sujet est inconnu, ou si `--with-output` est combiné
+            avec l'option globale `--output` (capturée par `main`).
+    """
+    if args.with_output and args.output:
+        raise SubjectError("--with-output ne supprime que output/<sujet>/ : retire l'option --output.")
+    slug = resolve_slug(args.slug, SUBJECTS_DIR)
+    manual_dir = DEFAULT_OUTPUT_ROOT / slug
+    remove_manual = args.with_output and manual_dir.is_dir()
+    if not args.yes:
+        question = f"Supprimer définitivement le sujet {slug!r} ({SUBJECTS_DIR / slug})"
+        question += f" et son manuel généré ({manual_dir}) ?" if remove_manual else " ?"
+        if not _confirm(question):
+            print("Suppression annulée (utilise --yes pour confirmer sans question).", file=sys.stderr)
+            return 1
+    delete_subject(slug, SUBJECTS_DIR)
+    print(f"Sujet {slug!r} supprimé.")
+    if remove_manual:
+        shutil.rmtree(manual_dir)
+        print(f"Manuel généré supprimé : {manual_dir}")
+    elif manual_dir.is_dir():
+        print(f"Le manuel généré est conservé : {manual_dir} (à supprimer avec --with-output, ou à la main).")
+    return 0
+
+
 def cmd_subject_criteria(args: argparse.Namespace) -> int:
     """Propose des critères de relecture par partie de la table des matières générée.
 
@@ -519,7 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     Returns:
         Le parseur configuré avec toutes les sous-commandes
-        (`init`, `write`, `status`, `redo`, `improve`, `improve-toc`, `publish`, `traces`, `subject`).
+        (`init`, `write`, `status`, `redo`, `improve`, `improve-toc`, `glossary`, `publish`, `traces`, `subject`).
     """
     parser = argparse.ArgumentParser(
         prog="manual", description="Génère un manuel de référence section par section, sur le sujet de votre choix."
@@ -599,6 +673,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_improve_toc.set_defaults(func=cmd_improve_toc)
 
+    p_glossary = sub.add_parser(
+        "glossary", help="Génère glossaire.md à partir des chapitres terminés (extraction par chapitre, puis consolidation)."
+    )
+    p_glossary.set_defaults(func=cmd_glossary)
+
     p_publish = sub.add_parser(
         "publish", help="Prépare le paquet de publication LinkedIn d'un chapitre terminé (article, post, visuel)."
     )
@@ -613,7 +692,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_traces.add_argument("--port", type=int, default=8787, help="Port d'écoute (défaut : 8787).")
     p_traces.set_defaults(func=cmd_traces)
 
-    p_subject = sub.add_parser("subject", help="Gère les sujets de manuel (liste, création, contrôle).")
+    p_subject = sub.add_parser("subject", help="Gère les sujets de manuel (liste, création, contrôle, suppression).")
     subject_sub = p_subject.add_subparsers(dest="subject_command", required=True)
 
     p_subject_list = subject_sub.add_parser("list", help="Liste les sujets disponibles.")
@@ -660,6 +739,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_subject_edit.add_argument("slug", nargs="?", default=None, help="Sujet à éditer (défaut : --subject ou l'unique sujet).")
     p_subject_edit.set_defaults(func=cmd_subject_edit)
 
+    p_subject_delete = subject_sub.add_parser(
+        "delete", help="Supprime définitivement un sujet (et, avec --with-output, son manuel généré)."
+    )
+    p_subject_delete.add_argument("slug", help="Sujet à supprimer (obligatoire : pas de choix par défaut).")
+    p_subject_delete.add_argument("-y", "--yes", action="store_true", help="Ne demande pas de confirmation.")
+    p_subject_delete.add_argument(
+        "--with-output", action="store_true", help="Supprime aussi le manuel généré dans output/<sujet>/."
+    )
+    p_subject_delete.set_defaults(func=cmd_subject_delete)
+
     p_subject_check = subject_sub.add_parser("check", help="Valide un sujet et ses prompts.")
     p_subject_check.add_argument("slug", nargs="?", default=None, help="Sujet à contrôler (défaut : l'unique sujet).")
     p_subject_check.add_argument("--show", action="store_true", help="Affiche les prompts tels qu'ils seront envoyés.")
@@ -690,6 +779,7 @@ def main(argv: list[str] | None = None) -> int:
         ProviderError,
         PublishError,
         RequirementsError,
+        StateError,
         SubjectError,
     ) as exc:
         print(f"Erreur : {exc}", file=sys.stderr)

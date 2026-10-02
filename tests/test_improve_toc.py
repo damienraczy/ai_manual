@@ -28,7 +28,9 @@ def chapter(numero, titre, subs=None):
         "numero": numero,
         "titre": titre,
         "description": f"desc {titre}",
-        "sous_sections": [{"numero": s.split(" ")[0], "titre": s.split(" ", 1)[1]} for s in subs],
+        "sous_sections": [
+            {"numero": s.split(" ")[0], "titre": s.split(" ", 1)[1], "description": f"résumé de {s}"} for s in subs
+        ],
     }
 
 
@@ -110,6 +112,25 @@ def test_improve_toc_sends_current_toc_locked_chapters_and_default_instruction(c
     assert "$" not in prompt
 
 
+def test_improve_toc_asks_for_a_description_on_every_sous_section(cfg, workdir, subject):
+    prompt = generator._read_prompt("toc_improve_instruction.md")
+
+    assert "description" in prompt.split("## Format de sortie")[1]
+    assert "sous-section" in prompt.split("## Format de sortie")[1]
+
+
+def test_improve_toc_asks_again_when_a_sous_section_has_no_description(cfg, workdir, subject, fake):
+    incomplete = toc_payload()
+    del incomplete["parties"][1]["chapitres"][1]["sous_sections"][0]["description"]
+    client = fake(as_json(incomplete), as_json(toc_payload()))
+
+    result = run(cfg, workdir, subject)
+
+    assert len(client.calls) == 2
+    assert "4.1 Def" in client.calls[1][-1]["content"]
+    assert result.modified is False
+
+
 def test_improve_toc_uses_custom_instruction_instead_of_default(cfg, workdir, subject, fake):
     client = fake(as_json(toc_payload()))
     default = generator._read_prompt("toc_improve_default_instruction.md").strip()
@@ -140,6 +161,41 @@ def improved_payload():
             ("II", "Avancé", [chapter(3, "Trois, revu", ["3.1 Nouveau", "3.2 Autre"]), chapter(4, "Quatre"), chapter(5, "Cinq")]),
         ]
     )
+
+
+def test_new_descriptions_on_written_chapters_do_not_send_them_back_to_pending(cfg, workdir, subject, fake):
+    """Seuls le numéro et le titre des sous-sections sont figés : la description peut être enrichie."""
+    payload = toc_payload()
+    payload["parties"][0]["chapitres"][0]["sous_sections"][0]["description"] = "une description enrichie"
+    fake(as_json(payload))
+
+    result = run(cfg, workdir, subject)
+
+    state = load_state(workdir)
+    assert result.modified is True
+    assert result.changed == []
+    assert [s.status for s in state.sections[:2]] == ["done", "done"]
+    assert state.sections[0].sous_sections[0].description == "une description enrichie"
+    assert "  *une description enrichie*" in (workdir / "00_toc.md").read_text(encoding="utf-8")
+
+
+def test_a_written_chapter_may_gain_descriptions_when_its_manifest_had_none(cfg, workdir, subject, fake):
+    state = load_state(workdir)
+    for section in state.sections:
+        for sous_section in section.sous_sections:
+            sous_section.description = ""
+    for partie in state.toc.parties:
+        for chapitre in partie.chapitres:
+            for sous_section in chapitre.sous_sections:
+                sous_section.description = ""
+    save_state(workdir, state)
+    fake(as_json(toc_payload()))
+
+    run(cfg, workdir, subject)
+
+    state = load_state(workdir)
+    assert [s.status for s in state.sections[:2]] == ["done", "done"]
+    assert state.sections[0].sous_sections[0].description == "résumé de 1.1 Def"
 
 
 def test_unchanged_chapters_keep_their_progress_and_changed_ones_restart(cfg, workdir, subject, fake):

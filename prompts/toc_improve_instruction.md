@@ -12,7 +12,7 @@ $consigne
 
 ## Chapitres figés
 
-Ces chapitres sont **déjà rédigés** : ils doivent figurer dans la nouvelle table des matières avec le **même numéro, le même titre et exactement les mêmes sous-sections** (numéros et titres inchangés). Le reste peut être modifié librement : réordonner, fusionner, scinder, ajouter, supprimer, renommer les parties.
+Ces chapitres sont **déjà rédigés** : ils doivent figurer dans la nouvelle table des matières avec le **même numéro, le même titre et exactement les mêmes sous-sections** (numéros et titres inchangés ; leur `description` peut être précisée ou ajoutée si elle manque). Le reste peut être modifié librement : réordonner, fusionner, scinder, ajouter, supprimer, renommer les parties.
 
 $chapitres_figes
 
@@ -29,5 +29,7 @@ Réponds **uniquement** avec un unique bloc de code ```json contenant la table d
 - `numero` des parties : chiffres romains ("I", "II", "III", ...).
 - `numero` des chapitres : entiers consécutifs de 1 à N sur l'ensemble du manuel (ne recommence pas à 1 à chaque partie), sans trou ni doublon.
 - `numero` des sous-sections : `"<numero_chapitre>.<rang>"` (ex. "6.3").
+- `introduction` et `conclusion` (hors des parties) : chacune a un `titre`, une `description` et des `sous_sections` (peut être vide) ; conserve-les, et ajoute-les si elles manquent. Elles ne sont pas des chapitres : ne les mets pas dans une partie.
 - Chaque chapitre a une `description` en une phrase.
+- Chaque sous-section a un `numero`, un `titre` et une `description` en une phrase résumant la sous-section.
 - Aucun commentaire, aucune clé additionnelle, aucun texte hors du bloc JSON. Le JSON doit être strictement valide (guillemets doubles, pas de virgule finale).

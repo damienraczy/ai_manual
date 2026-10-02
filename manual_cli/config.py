@@ -32,6 +32,9 @@ SUPPORTED_PROVIDER = "ollama"
 SUPPORTED_IMAGE_PROVIDERS = ("openai",)
 
 
+MODEL_KEYS = ("provider", "name", "url", "api_key", "timeout", "think")
+
+
 def _allowed_providers(role_name: str) -> tuple[str, ...]:
     """Fournisseurs autorisés pour un rôle donné.
 
@@ -60,6 +63,9 @@ class ModelSpec(BaseModel):
         base_url: URL de base résolue depuis la variable d'environnement `url`.
         api_key: Clé API résolue depuis la variable d'environnement `api_key`.
         timeout: Délai d'attente HTTP en secondes.
+        think: Réglage de réflexion transmis tel quel à Ollama (`true`, `false`
+            ou un niveau propre au modèle, ex. `"low"`), ou `None` pour laisser
+            le défaut du modèle.
     """
 
     key: str
@@ -68,6 +74,7 @@ class ModelSpec(BaseModel):
     base_url: str
     api_key: str
     timeout: int
+    think: bool | str | None = None
 
 
 def _read_role_map(params_path: Path) -> dict:
@@ -122,6 +129,14 @@ def _resolve_role(name: str, *, params_path: Path, env_path: Path) -> ModelSpec:
             f"Le rôle {name!r} référence le modèle {model_key!r}, absent de params.yml -> models."
         )
 
+    unknown = sorted(set(model_def) - set(MODEL_KEYS))
+    if unknown:
+        raise ConfigError(
+            f"Le modèle {model_key!r} a des clés inconnues dans params.yml : {', '.join(unknown)}. "
+            f"Clés admises : {', '.join(MODEL_KEYS)} "
+            "(la réflexion d'un modèle Ollama se règle avec `think`, ex. `think: low`)."
+        )
+
     provider = model_def.get("provider")
     allowed = _allowed_providers(name)
     if provider not in allowed:
@@ -140,6 +155,13 @@ def _resolve_role(name: str, *, params_path: Path, env_path: Path) -> ModelSpec:
             f"Variables d'environnement manquantes dans {env_path} : " + ", ".join(missing_env)
         )
 
+    think = model_def.get("think")
+    if think is not None and not isinstance(think, bool) and not (isinstance(think, str) and think.strip()):
+        raise ConfigError(
+            f"Le modèle {model_key!r} a un `think` invalide ({think!r}) : "
+            "attendu true, false ou un niveau texte propre au modèle (ex. low)."
+        )
+
     return ModelSpec(
         key=model_key,
         provider=provider,
@@ -147,6 +169,7 @@ def _resolve_role(name: str, *, params_path: Path, env_path: Path) -> ModelSpec:
         base_url=base_url,
         api_key=api_key,
         timeout=int(model_def.get("timeout", fallback_timeout)),
+        think=think,
     )
 
 

@@ -9,7 +9,9 @@ $current
 Consigne de l'auteur (elle peut comporter plusieurs demandes : applique-les toutes) :
 
 <consigne>
+
 $instruction
+
 </consigne>
 
 Renvoie le cadrage **complet** mis à jour, avec exactement les mêmes clés que le cadrage actuel : `titre`, `langue`, `role`, `objectif`, `public`, `niveau`, `ton`, `plan_directeur`, `exclusions` (liste de textes), `instructions` (texte).

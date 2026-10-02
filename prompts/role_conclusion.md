@@ -1,0 +1,1 @@
+Cette section est la **conclusion** du manuel, pas un chapitre du corps de texte : synthétise les idées maîtresses de l'ensemble, dégage ce que le lecteur doit retenir et ouvre sur la suite. N'introduis aucune notion nouvelle et ne recopie pas les chapitres : renvoie-y.

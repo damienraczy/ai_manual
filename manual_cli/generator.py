@@ -27,13 +27,16 @@ from .memory import INITIAL_DIGEST, ensure_budget, load_digest, save_digest, upd
 from .parsing import call_structured
 from .providers import OllamaCloudClient
 from .requirements_loader import blocking_ids, criteria_for_partie, render_criteria
-from .schemas import JudgeVerdict, TocSchema
+from .schemas import GeneratedTocSchema, JudgeVerdict, SousSection, TocSchema
 from .state import (
     ManualState,
     SectionState,
     build_manual_state,
     load_state,
     manifest_path,
+    render_plan,
+    renumber_toc,
+    toc_path,
     save_state,
     state_exists,
 )
@@ -98,12 +101,39 @@ def generate_toc(cfg: AppConfig, output_dir: Path, subject: Subject) -> ManualSt
         {"role": "system", "content": subject.system_prompt()},
         {"role": "user", "content": subject.toc_instruction()},
     ]
-    toc = call_structured(_client(cfg, "model_write"), messages, TocSchema, max_attempts=3)
+    toc = call_structured(_client(cfg, "model_write"), messages, GeneratedTocSchema, max_attempts=3)
     state = build_manual_state(toc, subject=subject.slug)
     save_state(output_dir, state)
     save_digest(output_dir, INITIAL_DIGEST)
     _write_toc_markdown(output_dir, state)
     return state
+
+
+def _describe(sous_section: SousSection) -> str:
+    """Formate une sous-section pour un prompt ou le plan lisible.
+
+    Args:
+        sous_section: Sous-section à formater.
+
+    Returns:
+        `"numero titre — description"`, ou `"numero titre"` si elle n'a pas de
+        description (manifeste ancien).
+    """
+    if not sous_section.description.strip():
+        return sous_section.label
+    return f"{sous_section.label} — {sous_section.description.strip()}"
+
+
+def _labels(section: SectionState) -> list[str]:
+    """Liste les intitulés `"numero titre"` des sous-sections d'un chapitre, descriptions exclues.
+
+    Args:
+        section: Chapitre suivi dans le manifeste.
+
+    Returns:
+        Les intitulés, dans l'ordre : c'est ce qui identifie un chapitre déjà rédigé.
+    """
+    return [ss.label for ss in section.sous_sections]
 
 
 def _write_toc_markdown(output_dir: Path, state: ManualState) -> None:
@@ -114,15 +144,25 @@ def _write_toc_markdown(output_dir: Path, state: ManualState) -> None:
         state: État du manuel contenant la TOC à rendre.
     """
     lines = [f"# {state.titre_manuel}", "", "## Table des matières", ""]
+
+    def entry(label: str, item) -> None:
+        lines.append(f"**{label}**")
+        lines.append(f"*{item.description}*")
+        for ss in item.sous_sections:
+            lines.append(f"- {ss.label}")
+            if ss.description.strip():
+                lines.append(f"  *{ss.description.strip()}*")
+        lines.append("")
+
+    if state.toc.introduction is not None:
+        entry(state.toc.introduction.titre, state.toc.introduction)
     for partie in state.toc.parties:
         lines.append(f"### Partie {partie.numero}. {partie.titre}")
         lines.append("")
         for chapitre in partie.chapitres:
-            lines.append(f"**{chapitre.numero}. {chapitre.titre}**")
-            lines.append(f"*{chapitre.description}*")
-            for ss in chapitre.sous_sections:
-                lines.append(f"- {ss.numero} {ss.titre}")
-            lines.append("")
+            entry(f"{chapitre.numero}. {chapitre.titre}", chapitre)
+    if state.toc.conclusion is not None:
+        entry(state.toc.conclusion.titre, state.toc.conclusion)
     (output_dir / "00_toc.md").write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -149,10 +189,25 @@ def _strip_end_marker(text: str, numero: int) -> tuple[str, bool]:
     return stripped, False
 
 
+def _role_note(section: SectionState) -> str:
+    """Consigne propre à l'introduction ou à la conclusion (vide pour un chapitre).
+
+    Args:
+        section: Section à rédiger.
+
+    Returns:
+        Le contenu de `prompts/role_<role>.md`, ou une chaîne vide pour un chapitre.
+    """
+    if section.role == "chapitre":
+        return ""
+    return _read_prompt(f"role_{section.role}.md").strip()
+
+
 def _draft_section(
     cfg: AppConfig,
     section: SectionState,
     digest: str,
+    plan: str,
     system_prompt: str,
     *,
     existing_text: str | None = None,
@@ -164,6 +219,7 @@ def _draft_section(
         cfg: Configuration applicative résolue.
         section: Section à rédiger (titre, sous-sections, etc.).
         digest: Résumé mémoire du manuel déjà rédigé, pour la cohérence.
+        plan: Plan complet de l'ouvrage (voir `state.render_plan`).
         system_prompt: Prompt système du sujet.
         existing_text: Version actuelle de la section. Si fournie, le jet est
             une amélioration de ce texte (prompt `improve_instruction.md`)
@@ -174,13 +230,16 @@ def _draft_section(
     Returns:
         Le texte brut renvoyé par le modèle (marqueur de fin inclus).
     """
-    sous_sections = "\n".join(f"- {s}" for s in section.sous_sections)
+    sous_sections = "\n".join(f"- {_describe(ss)}" for ss in section.sous_sections)
     values = dict(
         numero=section.numero,
         titre=section.titre,
+        intitule=section.intitule,
+        role_note=_role_note(section),
         description=section.description,
         sous_sections=sous_sections,
         digest=digest,
+        plan=plan,
     )
     if existing_text is None:
         template = string.Template(_read_prompt("section_instruction.md"))
@@ -260,6 +319,7 @@ def _draft_and_review(
     section: SectionState,
     requirements: dict,
     digest: str,
+    plan: str,
     system_prompt: str,
     max_rewrite: int,
     *,
@@ -273,6 +333,7 @@ def _draft_and_review(
         section: Section à traiter.
         requirements: Exigences du sujet (voir `Subject.requirements`).
         digest: Résumé mémoire du manuel déjà rédigé.
+        plan: Plan complet de l'ouvrage (voir `state.render_plan`).
         system_prompt: Prompt système du sujet.
         max_rewrite: Nombre maximal de cycles de réécriture après un rejet.
         existing_text: Texte à améliorer (voir `_draft_section`), ou `None`.
@@ -281,7 +342,7 @@ def _draft_and_review(
     Returns:
         Un tuple `(texte_final_sans_marqueur, dernier_verdict, marqueur_present, tentatives)`.
     """
-    text = _draft_section(cfg, section, digest, system_prompt, existing_text=existing_text, instruction=instruction)
+    text = _draft_section(cfg, section, digest, plan, system_prompt, existing_text=existing_text, instruction=instruction)
     verdict = _judge_section(cfg, section, text, requirements)
     attempts = 1
 
@@ -359,7 +420,7 @@ def write_section(
     """
     digest = load_digest(output_dir)
     final_text, verdict, marker_ok, attempts = _draft_and_review(
-        cfg, section, requirements, digest, system_prompt, max_rewrite
+        cfg, section, requirements, digest, render_plan(state, section.numero), system_prompt, max_rewrite
     )
     accepted = verdict.verdict == "accept" and marker_ok
 
@@ -441,7 +502,7 @@ def improve_section(
     existing_text = path.read_text(encoding="utf-8")
     digest = load_digest(output_dir)
     final_text, verdict, marker_ok, attempts = _draft_and_review(
-        cfg, section, requirements, digest, system_prompt, max_rewrite, existing_text=existing_text, instruction=instruction
+        cfg, section, requirements, digest, render_plan(state, section.numero), system_prompt, max_rewrite, existing_text=existing_text, instruction=instruction
     )
 
     if not (verdict.verdict == "accept" and marker_ok):
@@ -554,9 +615,9 @@ def _toc_preserving_schema(locked: list[SectionState]) -> type[TocSchema]:
         consécutive des chapitres et la présence des chapitres figés.
     """
 
-    class PreservingToc(TocSchema):
+    class PreservingToc(GeneratedTocSchema):
         @model_validator(mode="after")
-        def _keep_written_chapters(self) -> TocSchema:
+        def _keep_written_chapters(self) -> GeneratedTocSchema:
             chapters = [c for partie in self.parties for c in partie.chapitres]
             numeros = sorted(c.numero for c in chapters)
             if numeros != list(range(1, len(numeros) + 1)):
@@ -568,11 +629,12 @@ def _toc_preserving_schema(locked: list[SectionState]) -> type[TocSchema]:
                 if chapter is None:
                     problems.append(f"le chapitre {section.numero} « {section.titre} » (déjà rédigé) a disparu")
                     continue
-                subs = [f"{ss.numero} {ss.titre}" for ss in chapter.sous_sections]
-                if chapter.titre != section.titre or subs != section.sous_sections:
+                subs = [ss.label for ss in chapter.sous_sections]
+                locked_subs = _labels(section)
+                if chapter.titre != section.titre or subs != locked_subs:
                     problems.append(
                         f"le chapitre {section.numero} (déjà rédigé) doit rester « {section.titre} » "
-                        f"avec exactement les sous-sections {section.sous_sections}"
+                        f"avec exactement les sous-sections {locked_subs}"
                     )
             if problems:
                 raise ValueError(" ; ".join(problems))
@@ -623,7 +685,7 @@ def _archive_toc(output_dir: Path) -> Path:
         target = history_root / f"{base}-{counter}"
         counter += 1
     target.mkdir(parents=True)
-    for source in (manifest_path(output_dir), output_dir / "00_toc.md"):
+    for source in (manifest_path(output_dir), toc_path(output_dir), output_dir / "00_toc.md"):
         if source.is_file():
             shutil.copyfile(source, target / source.name)
     return target
@@ -660,10 +722,10 @@ def improve_toc(
         ProviderError: Si l'appel au modèle échoue définitivement.
     """
     state = _load_state_for_subject(output_dir, subject)
-    locked = [s for s in state.sections if s.status == "done"]
+    locked = [s for s in state.sections if s.status == "done" and s.role == "chapitre"]
     locked_text = (
         "\n".join(
-            f"- Chapitre {s.numero} « {s.titre} » — sous-sections : {', '.join(s.sous_sections) or '(aucune)'}"
+            f"- Chapitre {s.numero} « {s.titre} » — sous-sections : {', '.join(_labels(s)) or '(aucune)'}"
             for s in locked
         )
         or "(Aucun chapitre n'est encore rédigé : la table des matières est entièrement modifiable.)"
@@ -680,7 +742,7 @@ def improve_toc(
     proposal = call_structured(
         _client(cfg, "model_write"), messages, _toc_preserving_schema(locked), max_attempts=3
     )
-    new_toc = TocSchema.model_validate(proposal.model_dump())
+    new_toc = renumber_toc(TocSchema.model_validate(proposal.model_dump()))
     if new_toc == state.toc:
         return TocImproveResult(state, False, [], [], [], [], None)
 
@@ -689,7 +751,7 @@ def improve_toc(
     changed = []
     for section in new_state.sections:
         old = old_by_numero.get(section.numero)
-        if old is not None and old.titre == section.titre and old.sous_sections == section.sous_sections:
+        if old is not None and old.titre == section.titre and _labels(old) == _labels(section):
             section.status, section.attempts, section.last_verdict = old.status, old.attempts, old.last_verdict
         else:
             changed.append(section)
@@ -738,6 +800,7 @@ def run_write(
         KeyError: Si `only_numeros` contient un numéro de section inconnu.
     """
     state = _load_state_for_subject(output_dir, subject)
+    _write_toc_markdown(output_dir, state)  # reflète une éventuelle édition manuelle de toc.yml
     requirements = subject.requirements()
     system_prompt = subject.system_prompt()
 
@@ -763,6 +826,13 @@ def run_write(
         memory_lock=memory_lock,
     )
 
-    max_workers = max(1, min(workers, len(targets)))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        return list(executor.map(worker_fn, targets))
+    # L'introduction et la conclusion passent après les chapitres : elles s'appuient sur la mémoire du manuel écrit.
+    phases = [[t for t in targets if t.role == "chapitre"], [t for t in targets if t.role != "chapitre"]]
+    done: dict[int, SectionState] = {}
+    for phase in phases:
+        if not phase:
+            continue
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(phase)))) as executor:
+            for section in executor.map(worker_fn, phase):
+                done[section.numero] = section
+    return [done[t.numero] for t in targets]

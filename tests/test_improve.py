@@ -58,7 +58,7 @@ def one_chapter_state(status: str = "done"):
                 numero="I",
                 titre="Bases",
                 chapitres=[
-                    Chapitre(numero=1, titre="Intro", description="desc", sous_sections=[SousSection(numero="1.1", titre="Def")])
+                    Chapitre(numero=1, titre="Intro", description="desc", sous_sections=[SousSection(numero="1.1", titre="Def", description="définit le terme")])
                 ],
             )
         ],
@@ -97,7 +97,7 @@ def test_improve_seeds_the_draft_with_existing_text_and_default_instruction(cfg,
     assert messages[0] == {"role": "system", "content": "SYS"}
     prompt = messages[1]["content"]
     assert "ancien contenu" in prompt
-    assert "Intro" in prompt and "1.1 Def" in prompt
+    assert "Intro" in prompt and "1.1 Def — définit le terme" in prompt
     assert "mémoire initiale" in prompt
     assert "Relis" in prompt
     assert MARKER in prompt

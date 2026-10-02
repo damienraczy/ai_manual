@@ -4,6 +4,8 @@
 
 # Documentation
 !/README.md
+!/WIIFM.md
+!/MANUAL.md
 !/LICENSE
 
 # Code source, y compris l'interface web (static/) et les tests

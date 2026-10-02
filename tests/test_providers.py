@@ -93,6 +93,25 @@ def test_chat_does_not_duplicate_api_suffix_with_trailing_slash():
     assert post.call_args[0][0] == "https://ollama.com/api/chat"
 
 
+def test_chat_sends_no_think_field_by_default():
+    client = OllamaCloudClient(make_spec())
+
+    with patch("manual_cli.providers.requests.post", return_value=_mock_response({"message": {"content": "ok"}})) as post:
+        client.chat([{"role": "user", "content": "x"}])
+
+    assert "think" not in post.call_args.kwargs["json"]
+
+
+@pytest.mark.parametrize("think", ["low", "max", True, False])
+def test_chat_forwards_the_configured_think_value(think):
+    client = OllamaCloudClient(make_spec(think=think))
+
+    with patch("manual_cli.providers.requests.post", return_value=_mock_response({"message": {"content": "ok"}})) as post:
+        client.chat([{"role": "user", "content": "x"}])
+
+    assert post.call_args.kwargs["json"]["think"] is think
+
+
 def test_chat_passes_temperature_as_option():
     client = OllamaCloudClient(make_spec())
     response = _mock_response({"message": {"content": "ok"}})

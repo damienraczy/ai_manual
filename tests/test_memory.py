@@ -65,3 +65,11 @@ def test_ensure_budget_falls_back_to_truncation_on_empty_response():
     long_digest = "y" * (MAX_DIGEST_CHARS + 500)
     result = ensure_budget(client, long_digest)
     assert result == long_digest[:MAX_DIGEST_CHARS]
+
+
+def test_update_prompt_tracks_ideas_metaphors_terms_and_examples():
+    client = FakeClient("ok")
+    update_digest(client, "ancien", "Titre", "texte")
+    prompt = client.received_messages[0]["content"]
+    for heading in ("## Idées déjà développées", "## Métaphores et images déjà utilisées", "## Termes définis", "## Exemples déjà utilisés"):
+        assert heading in prompt
