@@ -29,6 +29,8 @@ Utilise ce résumé pour rester cohérent (terminologie, niveau déjà atteint) 
 
 $digest
 
+$sources
+
 ## Version actuelle du chapitre (amorce)
 
 <version_actuelle>

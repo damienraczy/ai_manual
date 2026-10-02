@@ -34,6 +34,16 @@ from .patterns import PatternError, parse_section_patterns
 from .providers import ProviderError
 from .publish import PublishError, publish_section
 from .requirements_loader import RequirementsError
+from .sources import (
+    SOURCES_DIRNAME,
+    SUFFIXES,
+    SourcesError,
+    list_source_files,
+    load_index,
+    refresh_index,
+    subject_context,
+)
+from .sources_assign import ensure_assignment, load_map, orphan_units, render_sources
 from .state import StateError, load_state, state_exists
 from .subject_author import generate_subject, propose_partie_criteria, refine_subject
 from .subjects import (
@@ -159,7 +169,13 @@ def cmd_status(args: argparse.Namespace) -> int:
         return 1
     state = load_state(output_dir)
     for section in state.sections:
-        print(f"{section.numero:>2}. [{section.status:<7}] {section.titre}")
+        coverage = ""
+        if section.sources_total:
+            coverage = (
+                f"  — sources : {section.sources_total - len(section.sources_ecartees)}/{section.sources_total} traitées, "
+                f"{len(section.sources_ecartees)} écartée(s)"
+            )
+        print(f"{section.numero:>2}. [{section.status:<7}] {section.titre}{coverage}")
     done = sum(1 for s in state.sections if s.status == "done")
     print(f"\n{done}/{len(state.sections)} sections terminées.")
     return 0
@@ -588,6 +604,194 @@ def cmd_subject_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sources_add(args: argparse.Namespace) -> int:
+    """Copie des documents de référence dans `subjects/<slug>/sources/`.
+
+    Args:
+        args: Arguments parsés (`files`, `force`).
+
+    Returns:
+        `0` si tous les fichiers ont été copiés.
+
+    Raises:
+        SourcesError: Si un fichier est introuvable, d'une extension non gérée ou déjà présent (capturée par `main`).
+    """
+    subject = _load_subject(args)
+    target = subject.directory / SOURCES_DIRNAME
+    sources_to_copy = []
+    for raw in args.files:
+        path = Path(raw)
+        if not path.is_file():
+            raise SourcesError(f"Fichier introuvable : {path}")
+        if path.suffix.lower() not in SUFFIXES:
+            raise SourcesError(f"{path.name} : extension non gérée (attendu : {', '.join(SUFFIXES)}).")
+        if (target / path.name).exists() and not args.force:
+            raise SourcesError(f"{path.name} existe déjà dans {target} (utilise --force pour l'écraser).")
+        sources_to_copy.append(path)
+    target.mkdir(exist_ok=True)
+    for path in sources_to_copy:
+        shutil.copyfile(path, target / path.name)
+        print(f"Ajouté : {target / path.name}")
+    return 0
+
+
+def cmd_sources_list(args: argparse.Namespace) -> int:
+    """Liste les documents de référence et l'état de leur analyse.
+
+    Args:
+        args: Arguments parsés (`output`, `subject`).
+
+    Returns:
+        `0`.
+    """
+    subject = _load_subject(args)
+    names = list_source_files(subject.directory)
+    if not names:
+        print(f"Aucun document de référence (dépose des .md/.txt dans {subject.directory / SOURCES_DIRNAME}).")
+        return 0
+    index = load_index(_output_dir(args, subject))
+    for name in names:
+        entry = index.fichiers.get(name)
+        if entry is None:
+            print(f"- {name} : non analysé")
+            continue
+        useful = sum(1 for u in entry.unites if u.utilite != "nulle")
+        print(f"- {name} : {len(entry.unites)} unité(s) dont {useful} utile(s)")
+    return 0
+
+
+def cmd_sources_extract(args: argparse.Namespace) -> int:
+    """Analyse les documents de référence nouveaux ou modifiés et consolide l'index.
+
+    Args:
+        args: Arguments parsés (`output`, `subject`).
+
+    Returns:
+        `0` en cas de succès.
+    """
+    subject = _load_subject(args)
+    output_dir = _output_dir(args, subject)
+    cfg = load_config()
+    tracing.configure(output_dir)
+    report = refresh_index(cfg, subject.directory, output_dir, subject_context(subject))
+    print(
+        f"Sources : {len(report.extracted)} analysé(s), {len(report.cached)} en cache, "
+        f"{len(report.removed)} retiré(s)" + (", index consolidé." if report.consolidated else ".")
+    )
+    return 0
+
+
+def _require_sources_index(args: argparse.Namespace):
+    """Charge l'index des sources du manuel, ou échoue s'il n'a pas été analysé.
+
+    Args:
+        args: Arguments parsés (`output`, `subject`).
+
+    Returns:
+        Le couple `(répertoire de sortie, index)`.
+
+    Raises:
+        SourcesError: Si aucun document n'a été analysé.
+    """
+    output_dir = _output_dir(args)
+    index = load_index(output_dir)
+    if not index.fichiers:
+        raise SourcesError("Aucun document analysé : dépose des .md/.txt avec `manual sources add`, puis `manual sources extract`.")
+    return output_dir, index
+
+
+def cmd_sources_assign(args: argparse.Namespace) -> int:
+    """Affecte les unités de matière aux chapitres (nouvelles unités seulement, sauf `--force`).
+
+    Args:
+        args: Arguments parsés (`output`, `subject`, `force`).
+
+    Returns:
+        `0` en cas de succès.
+
+    Raises:
+        SourcesError: Si le plan ou l'analyse des sources manque (capturée par `main`).
+    """
+    if not state_exists(_output_dir(args)):
+        raise SourcesError("Aucun manifeste trouvé : lance d'abord `manual init`.")
+    output_dir, index = _require_sources_index(args)
+    cfg = load_config()
+    tracing.configure(output_dir)
+    report = ensure_assignment(cfg, load_state(output_dir), index, output_dir, force=args.force)
+    print(
+        f"Affectation : {report.assigned} unité(s) affectée(s), {report.pruned} entrée(s) retirée(s), "
+        f"{len(report.orphans)} orpheline(s) (voir `manual sources orphans`)."
+    )
+    return 0
+
+
+def cmd_sources_show(args: argparse.Namespace) -> int:
+    """Affiche la matière que recevra un chapitre à la rédaction.
+
+    Args:
+        args: Arguments parsés (`output`, `subject`, `numero`).
+
+    Returns:
+        `0`.
+
+    Raises:
+        SourcesError: Si le chapitre est inconnu ou si rien n'a été analysé.
+    """
+    output_dir, index = _require_sources_index(args)
+    cfg = load_config()
+    state = load_state(output_dir)
+    section = next((s for s in state.sections if s.numero == args.numero), None)
+    if section is None:
+        raise SourcesError(f"Section inconnue : {args.numero}.")
+    block = render_sources(section, index, load_map(output_dir), int(cfg.setting("sources", "max_prompt_chars")))
+    if not block.text:
+        print(f"Aucune matière pour « {section.intitule} » (voir `manual sources orphans`).")
+        return 0
+    print(block.text)
+    if block.omitted:
+        print(f"\n{len(block.omitted)} unité(s) omise(s) faute de place : {', '.join(block.omitted)}")
+    return 0
+
+
+def cmd_sources_orphans(args: argparse.Namespace) -> int:
+    """Liste les unités utiles qu'aucun chapitre ne développe.
+
+    Args:
+        args: Arguments parsés (`output`, `subject`).
+
+    Returns:
+        `0`.
+    """
+    output_dir, index = _require_sources_index(args)
+    orphans = orphan_units(index, load_map(output_dir))
+    if not orphans:
+        print("Aucune unité orpheline : toute la matière utile est affectée.")
+        return 0
+    for u in orphans:
+        print(f"- [{u.id}] ({u.type}, {u.utilite}) {u.enonce}")
+    return 0
+
+
+def cmd_sources_conflicts(args: argparse.Namespace) -> int:
+    """Liste les contradictions repérées entre unités de matière.
+
+    Args:
+        args: Arguments parsés (`output`, `subject`).
+
+    Returns:
+        `0`.
+    """
+    _, index = _require_sources_index(args)
+    units = {u.id: u for u in index.units()}
+    pairs = sorted({tuple(sorted((u.id, other))) for u in units.values() for other in u.conflit_avec if other in units})
+    if not pairs:
+        print("Aucune contradiction repérée entre les sources.")
+        return 0
+    for left, right in pairs:
+        print(f"- [{left}] {units[left].enonce}\n  ↔ [{right}] {units[right].enonce}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Construit le parseur d'arguments du CLI `manual`.
 
@@ -677,6 +881,33 @@ def build_parser() -> argparse.ArgumentParser:
         "glossary", help="Génère glossaire.md à partir des chapitres terminés (extraction par chapitre, puis consolidation)."
     )
     p_glossary.set_defaults(func=cmd_glossary)
+
+    p_sources = sub.add_parser(
+        "sources", help="Documents de référence du sujet (bibliographie, thèmes, textes) : ajout, liste, analyse."
+    )
+    sources_sub = p_sources.add_subparsers(dest="sources_command", required=True)
+    p_sources_add = sources_sub.add_parser("add", help="Copie des fichiers .md/.txt dans subjects/<sujet>/sources/.")
+    p_sources_add.add_argument("files", nargs="+", metavar="FICHIER")
+    p_sources_add.add_argument("--force", action="store_true", help="Écrase un fichier du même nom.")
+    p_sources_add.set_defaults(func=cmd_sources_add)
+    p_sources_list = sources_sub.add_parser("list", help="Liste les documents et l'état de leur analyse.")
+    p_sources_list.set_defaults(func=cmd_sources_list)
+    p_sources_extract = sources_sub.add_parser(
+        "extract", help="Analyse les documents nouveaux ou modifiés (unités de matière) et consolide l'index."
+    )
+    p_sources_extract.set_defaults(func=cmd_sources_extract)
+    p_sources_assign = sources_sub.add_parser(
+        "assign", help="Affecte les unités de matière aux chapitres (nouvelles unités seulement)."
+    )
+    p_sources_assign.add_argument("--force", action="store_true", help="Recalcule toute l'affectation (ancienne carte en .bak).")
+    p_sources_assign.set_defaults(func=cmd_sources_assign)
+    p_sources_show = sources_sub.add_parser("show", help="Affiche la matière que recevra un chapitre à la rédaction.")
+    p_sources_show.add_argument("numero", type=int, help="Numéro de la section (0 = introduction).")
+    p_sources_show.set_defaults(func=cmd_sources_show)
+    p_sources_orphans = sources_sub.add_parser("orphans", help="Liste les unités utiles qu'aucun chapitre ne développe.")
+    p_sources_orphans.set_defaults(func=cmd_sources_orphans)
+    p_sources_conflicts = sources_sub.add_parser("conflicts", help="Liste les contradictions entre sources.")
+    p_sources_conflicts.set_defaults(func=cmd_sources_conflicts)
 
     p_publish = sub.add_parser(
         "publish", help="Prépare le paquet de publication LinkedIn d'un chapitre terminé (article, post, visuel)."
@@ -779,6 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
         ProviderError,
         PublishError,
         RequirementsError,
+        SourcesError,
         StateError,
         SubjectError,
     ) as exc:

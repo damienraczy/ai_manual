@@ -20,6 +20,8 @@ Utilise ce résumé pour rester cohérent (terminologie, niveau déjà atteint) 
 
 $digest
 
+$sources
+
 ## Contraintes de sortie — STRICT
 
 $role_note

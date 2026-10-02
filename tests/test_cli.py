@@ -1257,3 +1257,272 @@ def test_glossary_command_reports_the_written_file(tmp_path, monkeypatch, capsys
     assert received["out"] == tmp_path
     out = capsys.readouterr().out
     assert "2 termes" in out and "glossaire.md" in out
+
+
+# --- sources ------------------------------------------------------------------------
+
+
+def test_sources_add_copies_files_into_the_subject(subjects_dir, tmp_path, capsys):
+    doc = tmp_path / "biblio.md"
+    doc.write_text("contenu", encoding="utf-8")
+
+    rc = cli.main(["sources", "add", str(doc)])
+
+    assert rc == 0
+    assert (subjects_dir / "test-sujet" / "sources" / "biblio.md").read_text(encoding="utf-8") == "contenu"
+    assert "biblio.md" in capsys.readouterr().out
+
+
+def test_sources_add_refuses_a_missing_file_and_a_bad_extension(subjects_dir, tmp_path, capsys):
+    pdf = tmp_path / "x.pdf"
+    pdf.write_text("x", encoding="utf-8")
+
+    assert cli.main(["sources", "add", str(tmp_path / "absent.md")]) == 1
+    assert cli.main(["sources", "add", str(pdf)]) == 1
+    assert ".md" in capsys.readouterr().err
+
+
+def test_sources_add_does_not_overwrite_without_force(subjects_dir, tmp_path, capsys):
+    doc = tmp_path / "a.md"
+    doc.write_text("un", encoding="utf-8")
+    cli.main(["sources", "add", str(doc)])
+    doc.write_text("deux", encoding="utf-8")
+
+    assert cli.main(["sources", "add", str(doc)]) == 1
+    assert (subjects_dir / "test-sujet" / "sources" / "a.md").read_text(encoding="utf-8") == "un"
+    assert cli.main(["sources", "add", "--force", str(doc)]) == 0
+    assert (subjects_dir / "test-sujet" / "sources" / "a.md").read_text(encoding="utf-8") == "deux"
+
+
+def test_sources_list_without_documents(capsys):
+    rc = cli.main(["sources", "list"])
+
+    assert rc == 0
+    assert "Aucun document" in capsys.readouterr().out
+
+
+def test_sources_list_shows_files_with_unit_counts_when_extracted(subjects_dir, tmp_path, capsys):
+    from manual_cli import sources as src
+
+    directory = subjects_dir / "test-sujet" / "sources"
+    directory.mkdir()
+    (directory / "a.md").write_text("alpha", encoding="utf-8")
+    (directory / "b.md").write_text("beta", encoding="utf-8")
+    index = src.SourceIndex(
+        fichiers={
+            "a.md": src.FileEntry(
+                hash="h",
+                unites=[
+                    src.Unite(id="a.md#1", source="a.md", ligne=1, type="idee", enonce="E", extrait="alpha", utilite="haute"),
+                    src.Unite(id="a.md#2", source="a.md", ligne=1, type="fait", enonce="F", extrait="alpha", utilite="nulle"),
+                ],
+            )
+        }
+    )
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "sources_index.json").write_text(index.model_dump_json(), encoding="utf-8")
+
+    rc = cli.main(["--output", str(tmp_path / "out"), "sources", "list"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "a.md" in out and "2 unité(s) dont 1 utile(s)" in out
+    assert "b.md" in out and "non analysé" in out
+
+
+def test_sources_extract_reports_what_was_done(subjects_dir, tmp_path, monkeypatch, capsys):
+    from manual_cli.sources import RefreshReport
+
+    seen = {}
+
+    def fake_refresh(cfg, subject_dir, out, contexte=""):
+        seen.update(subject_dir=subject_dir, out=out, contexte=contexte)
+        return RefreshReport(extracted=["a.md"], cached=["b.md"], removed=["c.md"], consolidated=True)
+
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    monkeypatch.setattr(cli, "refresh_index", fake_refresh)
+
+    rc = cli.main(["--output", str(tmp_path / "out"), "sources", "extract"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert seen["subject_dir"] == subjects_dir / "test-sujet" and seen["out"] == tmp_path / "out"
+    assert "Sujet de test" in seen["contexte"]
+    assert "1 analysé(s)" in out and "1 en cache" in out and "1 retiré(s)" in out
+
+
+def _write_index(out, units):
+    from manual_cli import sources as src
+
+    out.mkdir(parents=True, exist_ok=True)
+    by_file = {}
+    for u in units:
+        by_file.setdefault(u.source, []).append(u)
+    index = src.SourceIndex(fichiers={n: src.FileEntry(hash="h", unites=us) for n, us in by_file.items()})
+    (out / "sources_index.json").write_text(index.model_dump_json(), encoding="utf-8")
+
+
+def _unit(n, **extra):
+    from manual_cli import sources as src
+
+    fields = dict(id=f"a.md#{n}", source="a.md", ligne=n, type="idee", enonce=f"énoncé {n}", extrait=f"x{n}", utilite="haute")
+    return src.Unite(**{**fields, **extra})
+
+
+def test_sources_assign_runs_the_assignment_and_reports(tmp_path, monkeypatch, capsys):
+    from manual_cli.sources_assign import AssignReport
+
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1)])
+    seen = {}
+
+    def fake_assign(cfg, state, index, output_dir, *, force=False):
+        seen.update(force=force, units=[u.id for u in index.units()])
+        return AssignReport(assigned=1, pruned=0, orphans=["a.md#9"])
+
+    monkeypatch.setattr(cli, "load_config", lambda: object())
+    monkeypatch.setattr(cli, "load_state", lambda o: make_manual_state())
+    monkeypatch.setattr(cli, "state_exists", lambda o: True)
+    monkeypatch.setattr(cli, "ensure_assignment", fake_assign)
+
+    rc = cli.main(["--output", str(out), "sources", "assign", "--force"])
+
+    assert rc == 0 and seen == {"force": True, "units": ["a.md#1"]}
+    text = capsys.readouterr().out
+    assert "1 unité(s) affectée(s)" in text and "1 orpheline(s)" in text
+
+
+def test_sources_assign_requires_an_analysis_and_a_plan(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "state_exists", lambda o: False)
+    assert cli.main(["--output", str(tmp_path / "o1"), "sources", "assign"]) == 1
+    assert "manual init" in capsys.readouterr().err
+
+    monkeypatch.setattr(cli, "state_exists", lambda o: True)
+    assert cli.main(["--output", str(tmp_path / "o2"), "sources", "assign"]) == 1
+    assert "sources extract" in capsys.readouterr().err
+
+
+def test_sources_show_prints_what_a_chapter_will_receive(tmp_path, monkeypatch, capsys):
+    from manual_cli import sources_assign as sa
+
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1, enonce="matière du un")])
+    sa.save_map(out, sa.SourcesMap(chapitres={"Un": sa.ChapterUnits(principal=["a.md#1"])}))
+    save = __import__("manual_cli.state", fromlist=["save_state"]).save_state
+    save(out, make_manual_state())
+    monkeypatch.setattr(cli, "load_config", lambda: __import__("manual_cli.config", fromlist=["AppConfig"]).AppConfig(settings={"sources": {"max_prompt_chars": 5000}}))
+
+    rc = cli.main(["--output", str(out), "sources", "show", "1"])
+
+    assert rc == 0
+    assert "matière du un" in capsys.readouterr().out
+
+
+def test_sources_show_says_when_a_chapter_has_no_matter(tmp_path, monkeypatch, capsys):
+    from manual_cli.config import AppConfig
+    from manual_cli.state import save_state
+
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1)])
+    save_state(out, make_manual_state())
+    monkeypatch.setattr(cli, "load_config", lambda: AppConfig(settings={"sources": {"max_prompt_chars": 5000}}))
+
+    rc = cli.main(["--output", str(out), "sources", "show", "1"])
+
+    assert rc == 0 and "Aucune matière" in capsys.readouterr().out
+
+
+def test_sources_show_reports_omitted_units(tmp_path, monkeypatch, capsys):
+    from manual_cli import sources_assign as sa
+    from manual_cli.config import AppConfig
+    from manual_cli.state import save_state
+
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1), _unit(2)])
+    sa.save_map(out, sa.SourcesMap(chapitres={"Un": sa.ChapterUnits(principal=["a.md#1", "a.md#2"])}))
+    save_state(out, make_manual_state())
+    monkeypatch.setattr(cli, "load_config", lambda: AppConfig(settings={"sources": {"max_prompt_chars": 10}}))
+
+    cli.main(["--output", str(out), "sources", "show", "1"])
+
+    assert "omise(s) faute de place" in capsys.readouterr().out
+
+
+def test_sources_orphans_lists_useful_units_without_a_chapter(tmp_path, capsys):
+    from manual_cli import sources_assign as sa
+
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1), _unit(2)])
+    sa.save_map(out, sa.SourcesMap(chapitres={"Un": sa.ChapterUnits(principal=["a.md#1"])}, orphelines=["a.md#2"]))
+
+    rc = cli.main(["--output", str(out), "sources", "orphans"])
+
+    text = capsys.readouterr().out
+    assert rc == 0 and "a.md#2" in text and "a.md#1" not in text
+
+
+def test_sources_orphans_when_there_are_none(tmp_path, capsys):
+    from manual_cli import sources_assign as sa
+
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1)])
+    sa.save_map(out, sa.SourcesMap(chapitres={"Un": sa.ChapterUnits(principal=["a.md#1"])}))
+
+    assert cli.main(["--output", str(out), "sources", "orphans"]) == 0
+    assert "Aucune unité orpheline" in capsys.readouterr().out
+
+
+def test_sources_conflicts_lists_contradicting_units(tmp_path, capsys):
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1, conflit_avec=["a.md#2"]), _unit(2, conflit_avec=["a.md#1"]), _unit(3)])
+
+    rc = cli.main(["--output", str(out), "sources", "conflicts"])
+
+    text = capsys.readouterr().out
+    assert rc == 0 and "a.md#1" in text and "a.md#2" in text and "a.md#3" not in text
+    assert text.count("↔") == 1
+
+
+def test_sources_conflicts_when_there_are_none(tmp_path, capsys):
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1)])
+
+    assert cli.main(["--output", str(out), "sources", "conflicts"]) == 0
+    assert "Aucune contradiction" in capsys.readouterr().out
+
+
+def test_sources_show_rejects_an_unknown_section(tmp_path, monkeypatch, capsys):
+    from manual_cli.config import AppConfig
+    from manual_cli.state import save_state
+
+    out = tmp_path / "out"
+    _write_index(out, [_unit(1)])
+    save_state(out, make_manual_state())
+    monkeypatch.setattr(cli, "load_config", lambda: AppConfig(settings={"sources": {"max_prompt_chars": 5000}}))
+
+    assert cli.main(["--output", str(out), "sources", "show", "42"]) == 1
+    assert "Section inconnue : 42" in capsys.readouterr().err
+
+
+def test_sources_commands_need_an_analysed_index(tmp_path, capsys):
+    for command in ("show", "orphans", "conflicts"):
+        argv = ["--output", str(tmp_path / "vide"), "sources", command] + (["1"] if command == "show" else [])
+        assert cli.main(argv) == 1
+        assert "sources extract" in capsys.readouterr().err
+
+
+def test_status_shows_source_coverage_only_when_there_is_matter(tmp_path, capsys):
+    from manual_cli.state import save_state
+
+    state = make_manual_state()
+    state.sections[0].sources_total = 3
+    state.sections[0].sources_ecartees = ["a.md#2 : hors sujet"]
+    save_state(tmp_path, state)
+
+    assert cli.main(["--output", str(tmp_path), "status"]) == 0
+    assert "sources : 2/3 traitées, 1 écartée(s)" in capsys.readouterr().out
+
+    state.sections[0].sources_total = 0
+    save_state(tmp_path, state)
+    cli.main(["--output", str(tmp_path), "status"])
+    assert "sources" not in capsys.readouterr().out

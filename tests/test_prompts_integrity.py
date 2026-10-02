@@ -24,8 +24,8 @@ def test_all_prompt_files_exist():
 
 def test_section_instruction_placeholders_are_substitutable():
     template = Template((PROMPTS_DIR / "section_instruction.md").read_text(encoding="utf-8"))
-    result = template.substitute(numero=1, titre="Titre", description="Desc", sous_sections="- x", digest="mem", plan="PLAN-X", intitule="1. Titre", role_note="")
-    assert "PLAN-X" in result
+    result = template.substitute(numero=1, titre="Titre", description="Desc", sous_sections="- x", digest="mem", plan="PLAN-X", intitule="1. Titre", role_note="", sources="SRC-X")
+    assert "PLAN-X" in result and "SRC-X" in result
     assert "Titre" in result
     assert "mem" in result
 
@@ -91,7 +91,7 @@ def test_authoring_templates_use_exactly_their_placeholders():
 def test_improve_templates_use_exactly_their_placeholders():
     template = Template((PROMPTS_DIR / "improve_instruction.md").read_text(encoding="utf-8"))
     assert set(template.get_identifiers()) == {
-        "numero", "titre", "description", "sous_sections", "digest", "contenu_existant", "consigne", "plan", "intitule", "role_note",
+        "numero", "titre", "description", "sous_sections", "digest", "contenu_existant", "consigne", "plan", "intitule", "role_note", "sources",
     }
     default = Template((PROMPTS_DIR / "improve_default_instruction.md").read_text(encoding="utf-8"))
     assert set(default.get_identifiers()) == set()
@@ -110,6 +110,16 @@ def test_glossary_templates_use_exactly_their_placeholders():
     expected = {
         "glossary_extract_instruction.md": {"numero", "titre", "texte"},
         "glossary_merge_instruction.md": {"entrees"},
+    }
+    for name, placeholders in expected.items():
+        template = Template((PROMPTS_DIR / name).read_text(encoding="utf-8"))
+        assert set(template.get_identifiers()) == placeholders, name
+
+
+def test_sources_templates_use_exactly_their_placeholders():
+    expected = {
+        "sources_extract_instruction.md": {"contexte", "fichier", "texte"},
+        "sources_consolidate_instruction.md": {"unites"},
     }
     for name, placeholders in expected.items():
         template = Template((PROMPTS_DIR / name).read_text(encoding="utf-8"))

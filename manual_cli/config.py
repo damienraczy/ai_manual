@@ -191,11 +191,38 @@ class AppConfig(BaseModel):
         roles: Rôles déjà résolus, utilisés tels quels en mode statique.
         params_path: Chemin de `params.yml`, si le rechargement à la demande est actif.
         env_path: Chemin du fichier `.env`, si le rechargement à la demande est actif.
+        settings: Réglages (section -> clé -> valeur) utilisés tels quels en mode statique.
     """
 
     roles: dict[str, ModelSpec] = {}
     params_path: Path | None = None
     env_path: Path | None = None
+    settings: dict[str, dict] = {}
+
+    def setting(self, section: str, key: str):
+        """Lit un réglage de `params.yml` (section libre, hors modèles et rôles).
+
+        Relit le fichier à chaque appel, comme `role`.
+
+        Args:
+            section: Section de premier niveau (ex: `"sources"`).
+            key: Clé dans cette section (ex: `"max_chunk_chars"`).
+
+        Returns:
+            La valeur configurée.
+
+        Raises:
+            ConfigError: Si la section ou la clé est absente.
+        """
+        if self.params_path is not None:
+            with open(self.params_path, "r", encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+            values = raw.get(section) or {}
+        else:
+            values = self.settings.get(section) or {}
+        if not isinstance(values, dict) or key not in values:
+            raise ConfigError(f"Réglage manquant dans params.yml : {section}.{key}")
+        return values[key]
 
     def role(self, name: str) -> ModelSpec:
         """Récupère la spécification du modèle associé à un rôle.

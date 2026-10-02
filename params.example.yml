@@ -105,3 +105,9 @@ xllm_config:
     model_judge: deepseek-v4-pro
     model_think: deepseek-v4-pro
     model_rewriter: mistral-large-3
+
+### Documents de référence (voir `manual sources`)
+sources:
+  max_chunk_chars: 12000      # taille maximale d'un bloc de document envoyé au modèle (découpe sans perte)
+  assign_batch: 40            # unités de matière affectées aux chapitres par appel
+  max_prompt_chars: 8000      # taille maximale du bloc de matière injecté dans le prompt d'un chapitre

@@ -29,6 +29,7 @@ Il fonctionne **sujet par sujet**. Le dépôt ne fournit aucun sujet : le dossie
 - [Guide : les sujets](#guide--les-sujets)
 - [Guide : écrire et suivre le manuel](#guide--écrire-et-suivre-le-manuel)
 - [Guide : améliorer le contenu et le plan](#guide--améliorer-le-contenu-et-le-plan)
+- [Guide : documents de référence](#guide--documents-de-référence)
 - [Publication LinkedIn (optionnelle)](#publication-linkedin-optionnelle)
 - [Fichiers produits](#fichiers-produits)
 - [Garanties et sécurités](#garanties-et-sécurités)
@@ -51,6 +52,7 @@ Il fonctionne **sujet par sujet**. Le dépôt ne fournit aucun sujet : le dossie
 | **Mémoire** | Le résumé structuré de ce qui a déjà été écrit (`memory.md`) : idées développées, métaphores et images, termes définis, exemples, décisions de style, chacun avec son chapitre. Transmis à chaque rédaction pour éviter contradictions et redites. |
 | **Plan de l'ouvrage** | Le plan complet, transmis à chaque rédaction avec le chapitre en cours signalé, pour que chaque section sache ce que contiennent les autres. |
 | **Glossaire** | `glossaire.md`, généré par `manual glossary` à partir des chapitres terminés. |
+| **Documents de référence** | Bibliographie, thèmes, notes ou passages fournis par l'auteur dans `subjects/<sujet>/sources/` : découpés en unités de matière, affectés chacun à un chapitre, et dont la prise en compte est contrôlée à la relecture. |
 
 ## Ce que fait le programme
 
@@ -179,6 +181,17 @@ Deux options se placent **avant** la sous-commande :
 | `manual status` | Affiche l'état de chaque section (`pending`, `done`, `failed`) et le total. Code de sortie `1` si aucun plan n'existe encore. |
 | `manual redo N [--max-rewrite K]` | Régénère la section N **depuis zéro** (sans relire l'existant). |
 | `manual glossary` | Génère `glossaire.md` à partir des chapitres terminés : extraction des termes chapitre par chapitre, puis consolidation (doublons fusionnés, tri alphabétique, chapitres cités). |
+
+### Documents de référence
+
+| Commande | Effet |
+|---|---|
+| `manual sources add FICHIER…` | Copie des `.md`/`.txt` (bibliographie, thèmes, notes, passages…) dans `subjects/<sujet>/sources/`. |
+| `manual sources extract` / `list` | Analyse les fichiers nouveaux ou modifiés en unités de matière (cache) / liste l'état. |
+| `manual sources assign [--force]` | Affecte chaque unité à un chapitre (`sources_map.yml`, éditable). |
+| `manual sources show N` / `orphans` / `conflicts` | Ce que recevra le chapitre N ; matière non placée ; contradictions entre sources. |
+
+`init`, `improve-toc`, `write` et `improve` analysent et affectent seuls les sources présentes. Voir [le guide](#guide--documents-de-référence).
 
 ### Amélioration
 
@@ -359,6 +372,20 @@ manual improve-toc -f consigne.txt
 - **Manifestes anciens** : un manifeste créé avant l'ajout des descriptions de sous-sections se relit sans migration (descriptions vides). `improve-toc` exige ensuite une description pour toutes les sous-sections, y compris celles des chapitres figés.
 - Avant d'avoir rédigé quoi que ce soit, tout le plan est modifiable.
 
+## Guide : documents de référence
+
+Pour que la rédaction s'appuie sur votre matière (bibliographie commentée, thèmes préparés, notes, passages déjà écrits, et même des textes inutiles que le programme saura écarter) :
+
+```bash
+manual sources add notes/biblio.md notes/themes.md   # dépose dans subjects/<sujet>/sources/
+manual sources extract                               # découpe en unités de matière (cache)
+manual init                                          # le plan tient compte des thèmes repérés
+manual sources show 2                                # ce que recevra le chapitre 2
+manual write -s 2
+```
+
+Chaque fichier est découpé en **unités** typées (idée, fait, référence, exemple, passage, thème), avec un extrait copié mot pour mot et vérifié. Chaque unité utile est affectée à **un seul** chapitre (pas de redite) dans `sources_map.yml`, que vous pouvez corriger. À la rédaction, le chapitre reçoit ses unités avec une consigne par type (citer exactement les références, étoffer les passages…) ; le juge exige que les unités *À COUVRIR* soient traitées **ou explicitement écartées** (`manual status` affiche la couverture). Les sources sont de la matière, pas une vérité. Détails : [MANUAL.md, section 12 bis](MANUAL.md#12-bis-documents-de-référence). Réglages (taille des blocs, budget du prompt) : section `sources:` de `params.yml` (voir `params.example.yml`).
+
 ## Publication LinkedIn (optionnelle)
 
 `manual publish N` prépare, pour un chapitre terminé, un paquet dans `output/<sujet>/publish/<chapitre>/` :
@@ -378,6 +405,7 @@ Dans le répertoire de sortie (`output/<sujet>/` par défaut) :
 | `00_toc.md` | Vue lisible du plan (régénérée par `init`, `improve-toc` et `write`) : description du chapitre en italique sous son titre, description de chaque sous-section en italique sous son intitulé |
 | `00_introduction.md`, `NN_conclusion.md` | Introduction et conclusion, si le plan en prévoit |
 | `glossaire.md` | Le glossaire (`manual glossary`) |
+| `sources_index.json`, `sources_map.yml` | Unités extraites des documents de référence ; leur affectation aux chapitres (éditable) |
 | `NN_titre-du-chapitre.md` | Un fichier Markdown par chapitre |
 | `NN_titre-du-chapitre.md.bak` | Version précédente d'un chapitre, après `improve` |
 | `NN_titre-du-chapitre.candidate.md` | Version d'`improve` refusée par la relecture (l'original est intact) |
@@ -413,6 +441,7 @@ Tout le texte envoyé aux modèles est dans `prompts/` (les prompts spécifiques
 | `section_instruction.md` | Rédaction d'une section |
 | `role_introduction.md`, `role_conclusion.md` | Consigne propre à l'introduction et à la conclusion |
 | `glossary_extract_instruction.md`, `glossary_merge_instruction.md` | Extraction des termes d'un chapitre et consolidation du glossaire |
+| `sources_extract_instruction.md`, `sources_consolidate_instruction.md`, `sources_assign_instruction.md` | Documents de référence : découpe en unités, doublons et contradictions, affectation aux chapitres |
 | `judge_instruction.md` | Relecture d'un chapitre |
 | `rewrite_instruction.md` | Réécriture après un rejet |
 | `improve_instruction.md`, `improve_default_instruction.md` | Amélioration d'un chapitre et consigne par défaut |
@@ -433,6 +462,8 @@ manual_cli/            code source
   config.py            params.yml et ~/.env, relus à chaque appel
   state.py, memory.py  plan (`toc.yml`), suivi (`manifest.json`) et résumé structuré
   glossary.py          glossaire : extraction par chapitre et consolidation
+  sources.py           documents de référence : unités de matière, cache, consolidation
+  sources_assign.py    affectation aux chapitres, bloc injecté à la rédaction, résumé pour le plan
   schemas.py           schémas du plan (introduction, parties, chapitres, sous-sections, conclusion) et du verdict du juge
   parsing.py           extraction et validation du JSON des modèles (nouvelles tentatives)
   patterns.py          lecture des sélections de sections (`-s 1 3 5-8`)

@@ -69,6 +69,8 @@ class SectionState(BaseModel):
         status: `"pending"`, `"done"` ou `"failed"`.
         attempts: Nombre de cycles rédaction/jugement effectués.
         last_verdict: Dernier verdict du juge, ou motif d'échec technique.
+        sources_total: Nombre d'éléments « À COUVRIR » des documents de référence soumis au chapitre.
+        sources_ecartees: Éléments écartés par le rédacteur, `"id : motif"`.
     """
 
     numero: int
@@ -82,6 +84,8 @@ class SectionState(BaseModel):
     status: str = "pending"  # pending | done | failed
     attempts: int = 0
     last_verdict: str | None = None
+    sources_total: int = 0
+    sources_ecartees: list[str] = []
 
     @property
     def intitule(self) -> str:
@@ -414,7 +418,14 @@ def save_state(output_dir: Path, state: ManualState) -> None:
     tracking = {
         "subject": state.subject,
         "sections": [
-            {"numero": s.numero, "titre": s.titre, "status": s.status, "attempts": s.attempts, "last_verdict": s.last_verdict}
+            {
+                "numero": s.numero,
+                "titre": s.titre,
+                "status": s.status,
+                "attempts": s.attempts,
+                "last_verdict": s.last_verdict,
+                **({"sources_total": s.sources_total, "sources_ecartees": s.sources_ecartees} if s.sources_total else {}),
+            }
             for s in state.sections
         ],
     }
@@ -451,6 +462,8 @@ def load_state(output_dir: Path) -> ManualState:
         t = tracked.get((section.numero, section.titre))
         if t is not None:
             section.status, section.attempts, section.last_verdict = t["status"], t["attempts"], t["last_verdict"]
+            section.sources_total = t.get("sources_total", 0)
+            section.sources_ecartees = t.get("sources_ecartees", [])
     return state
 
 

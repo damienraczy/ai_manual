@@ -10,6 +10,7 @@ limite de `max_rewrite` cycles → mise à jour de la mémoire (`model_think`).
 
 from __future__ import annotations
 
+import re
 import shutil
 import string
 import threading
@@ -28,6 +29,8 @@ from .parsing import call_structured
 from .providers import OllamaCloudClient
 from .requirements_loader import blocking_ids, criteria_for_partie, render_criteria
 from .schemas import GeneratedTocSchema, JudgeVerdict, SousSection, TocSchema
+from .sources import Unite, list_source_files, load_index, refresh_index, subject_context
+from .sources_assign import ensure_assignment, plan_summary, section_matter
 from .state import (
     ManualState,
     SectionState,
@@ -44,6 +47,8 @@ from .subjects import Subject
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 SECTION_END_TEMPLATE = "--- Fin de la section {numero} — Dis « continue » pour la suivante ---"
+COVERAGE_ID = "couverture_sources"
+DISCARD_RE = re.compile(r"<!--\s*écarté\s*\[([^\]]+)\]\s*:\s*(.*?)\s*-->", re.DOTALL)
 
 
 class GeneratorError(Exception):
@@ -97,15 +102,17 @@ def generate_toc(cfg: AppConfig, output_dir: Path, subject: Subject) -> ManualSt
             au schéma après plusieurs tentatives.
         ProviderError: Si l'appel au modèle échoue définitivement.
     """
+    matter = _matter_for_plan(cfg, output_dir, subject)
     messages = [
         {"role": "system", "content": subject.system_prompt()},
-        {"role": "user", "content": subject.toc_instruction()},
+        {"role": "user", "content": "\n\n".join(filter(None, [subject.toc_instruction(), matter]))},
     ]
     toc = call_structured(_client(cfg, "model_write"), messages, GeneratedTocSchema, max_attempts=3)
     state = build_manual_state(toc, subject=subject.slug)
     save_state(output_dir, state)
     save_digest(output_dir, INITIAL_DIGEST)
     _write_toc_markdown(output_dir, state)
+    _prepare_sources(cfg, output_dir, subject, state)
     return state
 
 
@@ -212,6 +219,7 @@ def _draft_section(
     *,
     existing_text: str | None = None,
     instruction: str | None = None,
+    sources: str = "",
 ) -> str:
     """Demande au modèle rédacteur un jet de section, neuf ou amorcé par un texte existant.
 
@@ -226,6 +234,8 @@ def _draft_section(
             plutôt qu'une rédaction à partir de rien.
         instruction: Consigne d'amélioration (ignorée sans `existing_text`).
             Vide ou `None` : consigne par défaut `improve_default_instruction.md`.
+        sources: Bloc de matière tiré des documents de référence (voir
+            `sources_assign.sources_for_section`), vide s'il n'y en a pas.
 
     Returns:
         Le texte brut renvoyé par le modèle (marqueur de fin inclus).
@@ -240,6 +250,7 @@ def _draft_section(
         sous_sections=sous_sections,
         digest=digest,
         plan=plan,
+        sources=sources,
     )
     if existing_text is None:
         template = string.Template(_read_prompt("section_instruction.md"))
@@ -255,8 +266,51 @@ def _draft_section(
     return _client(cfg, "model_write").chat(messages)
 
 
+def _coverage_criterion(must_cover: list[Unite]) -> dict:
+    """Critère bloquant exigeant que la matière de l'auteur soit traitée ou écartée explicitement.
+
+    Args:
+        must_cover: Unités « À COUVRIR » montrées au rédacteur.
+
+    Returns:
+        Un critère au format de `requirements.yml`.
+    """
+    items = "\n".join(f"  - [{u.id}] {u.enonce.strip()}" for u in must_cover)
+    return {
+        "id": COVERAGE_ID,
+        "severity": "bloquant",
+        "description": (
+            "Chaque élément ci-dessous, fourni par l'auteur, doit être traité dans la section (idée développée, "
+            "référence citée avec ses éléments, thème abordé) ou explicitement écarté par une ligne "
+            "`<!-- écarté [identifiant] : motif -->` au motif recevable (hors sujet, douteux). "
+            "Signale ici chaque élément ni traité ni écarté, avec son identifiant :\n" + items
+        ),
+    }
+
+
+def _extract_discards(text: str) -> tuple[str, list[str]]:
+    """Sépare le texte d'un chapitre des écarts déclarés par le rédacteur.
+
+    Args:
+        text: Texte final (sans marqueur de fin).
+
+    Returns:
+        Le texte sans les commentaires `<!-- écarté [id] : motif -->` et la liste `"id : motif"`.
+        Un texte sans écart est renvoyé tel quel.
+    """
+    found = DISCARD_RE.findall(text)
+    if not found:
+        return text, []
+    return DISCARD_RE.sub("", text).strip(), [f"{i.strip()} : {m.strip()}" for i, m in found]
+
+
 def _judge_section(
-    cfg: AppConfig, section: SectionState, section_text: str, requirements: dict
+    cfg: AppConfig,
+    section: SectionState,
+    section_text: str,
+    requirements: dict,
+    *,
+    must_cover: list[Unite] = (),
 ) -> JudgeVerdict:
     """Fait évaluer une section par le modèle juge.
 
@@ -270,6 +324,8 @@ def _judge_section(
         section: Section évaluée (utilisée pour retrouver sa partie).
         section_text: Texte de la section à évaluer.
         requirements: Exigences chargées via `requirements_loader.load_requirements`.
+        must_cover: Unités de matière que le texte doit traiter ou écarter ; ajoute le critère
+            bloquant `couverture_sources` si la liste n'est pas vide.
 
     Returns:
         Le verdict du juge, éventuellement corrigé par le garde-fou local.
@@ -280,6 +336,8 @@ def _judge_section(
         ProviderError: Si l'appel au modèle échoue définitivement.
     """
     criteria = criteria_for_partie(requirements, section.partie_titre)
+    if must_cover:
+        criteria = [*criteria, _coverage_criterion(list(must_cover))]
     template = string.Template(_read_prompt("judge_instruction.md"))
     instruction = template.substitute(
         requirements=render_criteria(criteria),
@@ -325,6 +383,8 @@ def _draft_and_review(
     *,
     existing_text: str | None = None,
     instruction: str | None = None,
+    sources: str = "",
+    must_cover: list[Unite] = (),
 ) -> tuple[str, JudgeVerdict, bool, int]:
     """Boucle rédaction → jugement → réécriture, commune à l'écriture et à l'amélioration.
 
@@ -338,17 +398,21 @@ def _draft_and_review(
         max_rewrite: Nombre maximal de cycles de réécriture après un rejet.
         existing_text: Texte à améliorer (voir `_draft_section`), ou `None`.
         instruction: Consigne d'amélioration (voir `_draft_section`).
+        sources: Bloc de matière des documents de référence (voir `_draft_section`).
+        must_cover: Unités à traiter ou écarter, exigées par le juge (voir `_judge_section`).
 
     Returns:
         Un tuple `(texte_final_sans_marqueur, dernier_verdict, marqueur_present, tentatives)`.
     """
-    text = _draft_section(cfg, section, digest, plan, system_prompt, existing_text=existing_text, instruction=instruction)
-    verdict = _judge_section(cfg, section, text, requirements)
+    text = _draft_section(
+        cfg, section, digest, plan, system_prompt, existing_text=existing_text, instruction=instruction, sources=sources
+    )
+    verdict = _judge_section(cfg, section, text, requirements, must_cover=must_cover)
     attempts = 1
 
     while verdict.verdict == "revise" and attempts <= max_rewrite:
         text = _rewrite_section(cfg, section, text, verdict)
-        verdict = _judge_section(cfg, section, text, requirements)
+        verdict = _judge_section(cfg, section, text, requirements, must_cover=must_cover)
         attempts += 1
 
     final_text, marker_ok = _strip_end_marker(text, section.numero)
@@ -419,10 +483,21 @@ def write_section(
         La `SectionState` mise à jour (statut, nombre de tentatives, dernier verdict).
     """
     digest = load_digest(output_dir)
+    matter = section_matter(cfg, output_dir, section)
     final_text, verdict, marker_ok, attempts = _draft_and_review(
-        cfg, section, requirements, digest, render_plan(state, section.numero), system_prompt, max_rewrite
+        cfg,
+        section,
+        requirements,
+        digest,
+        render_plan(state, section.numero),
+        system_prompt,
+        max_rewrite,
+        sources=matter.text,
+        must_cover=matter.must_cover,
     )
     accepted = verdict.verdict == "accept" and marker_ok
+    final_text, discards = _extract_discards(final_text)
+    section.sources_total, section.sources_ecartees = len(matter.must_cover), discards
 
     (output_dir / section.filename).write_text(final_text + "\n", encoding="utf-8")
 
@@ -501,9 +576,21 @@ def improve_section(
         )
     existing_text = path.read_text(encoding="utf-8")
     digest = load_digest(output_dir)
+    matter = section_matter(cfg, output_dir, section)
     final_text, verdict, marker_ok, attempts = _draft_and_review(
-        cfg, section, requirements, digest, render_plan(state, section.numero), system_prompt, max_rewrite, existing_text=existing_text, instruction=instruction
+        cfg,
+        section,
+        requirements,
+        digest,
+        render_plan(state, section.numero),
+        system_prompt,
+        max_rewrite,
+        existing_text=existing_text,
+        instruction=instruction,
+        sources=matter.text,
+        must_cover=matter.must_cover,
     )
+    final_text, discards = _extract_discards(final_text)
 
     if not (verdict.verdict == "accept" and marker_ok):
         candidate = path.with_name(path.name.removesuffix(".md") + ".candidate.md")
@@ -516,6 +603,7 @@ def improve_section(
     section.status = "done"
     section.attempts = attempts
     section.last_verdict = verdict.verdict
+    section.sources_total, section.sources_ecartees = len(matter.must_cover), discards
     with state_lock or nullcontext():
         save_state(output_dir, state)
     _fold_into_memory(cfg, output_dir, section, final_text, memory_lock)
@@ -545,6 +633,46 @@ def _load_state_for_subject(output_dir: Path, subject: Subject) -> ManualState:
             f"(répertoire {output_dir}). Utilise --subject {state.subject} ou un autre --output."
         )
     return state
+
+
+def _prepare_sources(cfg: AppConfig, output_dir: Path, subject: Subject, state: ManualState) -> None:
+    """Met à jour l'analyse et l'affectation des documents de référence, s'il y en a.
+
+    Sans document (et sans index d'une analyse passée), ne fait rien et ne coûte aucun appel.
+
+    Args:
+        cfg: Configuration applicative résolue.
+        output_dir: Répertoire de sortie du manuel.
+        subject: Sujet (contient `sources/`).
+        state: État du manuel (plan, pour l'affectation).
+
+    Raises:
+        SourcesError: Si un document est illisible ou une carte invalide.
+        ParsingError: Si le modèle ne renvoie pas de réponse valide.
+    """
+    if not list_source_files(subject.directory) and not load_index(output_dir).fichiers:
+        return
+    refresh_index(cfg, subject.directory, output_dir, subject_context(subject))
+    ensure_assignment(cfg, state, load_index(output_dir), output_dir)
+
+
+def _matter_for_plan(cfg: AppConfig, output_dir: Path, subject: Subject) -> str:
+    """Résumé des documents de référence à joindre aux prompts du plan, vide s'il n'y en a pas.
+
+    Analyse d'abord les documents nouveaux ou modifiés (cache par empreinte).
+
+    Args:
+        cfg: Configuration applicative résolue.
+        output_dir: Répertoire de sortie du manuel.
+        subject: Sujet (contient `sources/`).
+
+    Returns:
+        Le résumé par thème (voir `sources_assign.plan_summary`), ou une chaîne vide.
+    """
+    if not list_source_files(subject.directory) and not load_index(output_dir).fichiers:
+        return ""
+    refresh_index(cfg, subject.directory, output_dir, subject_context(subject))
+    return plan_summary(load_index(output_dir), int(cfg.setting("sources", "max_prompt_chars")))
 
 
 def run_improve(
@@ -583,6 +711,7 @@ def run_improve(
         raise GeneratorError(
             f"Section(s) sans contenu à améliorer : {', '.join(empty)}. Lance d'abord `manual write -s ...`."
         )
+    _prepare_sources(cfg, output_dir, subject, state)
 
     worker_fn = partial(
         improve_section,
@@ -737,7 +866,7 @@ def improve_toc(
     )
     messages = [
         {"role": "system", "content": subject.system_prompt()},
-        {"role": "user", "content": prompt},
+        {"role": "user", "content": "\n\n".join(filter(None, [prompt, _matter_for_plan(cfg, output_dir, subject)]))},
     ]
     proposal = call_structured(
         _client(cfg, "model_write"), messages, _toc_preserving_schema(locked), max_attempts=3
@@ -753,6 +882,7 @@ def improve_toc(
         old = old_by_numero.get(section.numero)
         if old is not None and old.titre == section.titre and _labels(old) == _labels(section):
             section.status, section.attempts, section.last_verdict = old.status, old.attempts, old.last_verdict
+            section.sources_total, section.sources_ecartees = old.sources_total, old.sources_ecartees
         else:
             changed.append(section)
     kept_keys = {(s.numero, s.titre) for s in new_state.sections}
@@ -765,6 +895,7 @@ def improve_toc(
     history_dir = _archive_toc(output_dir)
     save_state(output_dir, new_state)
     _write_toc_markdown(output_dir, new_state)
+    _prepare_sources(cfg, output_dir, subject, new_state)
     return TocImproveResult(new_state, True, changed, removed, orphan_files, orphan_criteria, history_dir)
 
 
@@ -811,6 +942,7 @@ def run_write(
 
     if not targets:
         return []
+    _prepare_sources(cfg, output_dir, subject, state)
 
     state_lock = threading.Lock()
     memory_lock = threading.Lock()

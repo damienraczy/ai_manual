@@ -16,6 +16,7 @@ Ce document est la référence exhaustive de `ai_manual` (commande `manual`). Le
 10. [Flux de travail](#10-flux-de-travail)
 11. [Améliorer le contenu et le plan](#11-améliorer-le-contenu-et-le-plan)
 12. [Le glossaire](#12-le-glossaire)
+    - [12 bis. Documents de référence](#12-bis-documents-de-référence)
 13. [Publication LinkedIn](#13-publication-linkedin)
 14. [Fichiers produits](#14-fichiers-produits)
 15. [Traçabilité et diagnostic](#15-traçabilité-et-diagnostic)
@@ -153,9 +154,20 @@ llm_config:
 |---|---|---|
 | `model_write` | sujets, plan (et son amélioration), chapitres, glossaire, brouillon de post | `ollama` |
 | `model_judge` | relecture de chaque section | `ollama` |
-| `model_think` | mise à jour de la mémoire | `ollama` |
+| `model_think` | mise à jour de la mémoire, analyse et affectation des documents de référence | `ollama` |
 | `model_rewriter` | réécriture après rejet | `ollama` |
 | `model_image` | image de couverture | `openai` |
+
+**`sources:`** — réglages des documents de référence (voir 12 bis), requis dès qu'un sujet a des sources :
+
+```yaml
+sources:
+  max_chunk_chars: 12000   # taille maximale d'un bloc de document envoyé au modèle (découpe sans perte)
+  assign_batch: 40         # unités affectées aux chapitres par appel
+  max_prompt_chars: 8000   # taille maximale du bloc de matière injecté dans le prompt d'un chapitre
+```
+
+Une clé manquante provoque une erreur explicite (`Réglage manquant dans params.yml : sources.…`), jamais une valeur par défaut silencieuse.
 
 Les fournisseurs autorisés sont imposés par le code. **Seul le bloc nommé exactement `llm_config` est lu** ; les autres (`FASTllm_config`, `xllm_config`) sont des préréglages inertes : pour en activer un, renommer les blocs. Une clé `generation:` vide en tête de fichier est ignorée.
 
@@ -398,7 +410,7 @@ Affiche `[OK]` ou `[A REVOIR]` par section ; **code de sortie 0 même si des sec
 
 ### 9.4 `manual status`
 
-Affiche `N. [statut] titre` pour chaque section (l'introduction est `0`) et `x/y sections terminées`. Code 1 si aucun plan n'existe.
+Affiche `N. [statut] titre` pour chaque section (l'introduction est `0`) et `x/y sections terminées`. Pour un chapitre qui a reçu de la matière de documents de référence : `— sources : x/y traitées, z écartée(s)`. Code 1 si aucun plan n'existe.
 
 ### 9.5 `manual redo N [--max-rewrite K]`
 
@@ -415,6 +427,20 @@ Améliore le plan sans rien perdre (section 11.2).
 ### 9.8 `manual glossary`
 
 Génère `glossaire.md` (section 12).
+
+### 9.8 bis `manual sources …`
+
+Documents de référence (section 12 bis).
+
+| Commande | Effet |
+|---|---|
+| `sources add FICHIER… [--force]` | Copie des `.md`/`.txt` dans `subjects/<slug>/sources/` (refuse d'écraser sans `--force`) |
+| `sources list` | Fichiers et état de l'analyse (unités, dont utiles) |
+| `sources extract` | Analyse les fichiers nouveaux ou modifiés (cache par empreinte) et consolide |
+| `sources assign [--force]` | Affecte les unités aux chapitres (nouvelles seulement ; `--force` recalcule, ancienne carte en `.bak`) |
+| `sources show N` | Affiche la matière que recevra la section N à la rédaction |
+| `sources orphans` | Unités utiles qu'aucun chapitre ne développe |
+| `sources conflicts` | Contradictions repérées entre sources |
 
 ### 9.9 `manual publish N [--no-image]`
 
@@ -435,7 +461,7 @@ Voir section 5.4.
 | `0` | Succès (y compris sections individuelles en échec : lire `status`) |
 | `1` | Erreur connue (`Erreur : …` sur stderr), ou `init` sans `--force` sur un plan existant, ou `status` sans plan |
 
-Erreurs connues capturées centralement : `ConfigError`, `GeneratorError`, `ParsingError`, `PatternError`, `ProviderError`, `PublishError`, `RequirementsError`, `StateError`, `SubjectError`.
+Erreurs connues capturées centralement : `ConfigError`, `GeneratorError`, `ParsingError`, `PatternError`, `ProviderError`, `PublishError`, `RequirementsError`, `SourcesError`, `StateError`, `SubjectError`.
 
 ---
 
@@ -531,6 +557,76 @@ Particularités :
 
 ---
 
+## 12 bis. Documents de référence
+
+Pour donner de la matière à la rédaction, un sujet peut fournir des documents : bibliographie commentée, thèmes préparés, notes plus ou moins structurées, passages déjà rédigés… et même des textes inutiles (ils sont écartés). Ils vont dans `subjects/<slug>/sources/` (`.md` ou `.txt`, sous-dossiers admis, fichiers cachés ignorés ; non versionné comme le reste du sujet).
+
+```bash
+manual sources add notes/biblio.md notes/themes.md   # copie dans subjects/<slug>/sources/
+manual sources extract                               # analyse + consolidation (cache par empreinte)
+manual sources list
+manual sources assign                                # unités -> chapitres (après `manual init`)
+manual sources show 3                                # ce que recevra le chapitre 3
+```
+
+En pratique `init`, `improve-toc`, `write` et `improve` font l'analyse et l'affectation **eux-mêmes** dès que `sources/` contient des fichiers ; les sous-commandes servent à les lancer à la main et à contrôler.
+
+### 12 bis.1 Principe : des unités de matière
+
+Chaque fichier est découpé par `model_think` en **unités** :
+
+| Champ | Sens |
+|---|---|
+| `id` | `<fichier>#<n>`, stable |
+| `type` | `idee`, `fait`, `reference`, `exemple`, `passage` (texte déjà rédigé), `theme` |
+| `enonce` | l'unité reformulée en une ou deux phrases |
+| `extrait` | passage **copié mot pour mot** : il est vérifié dans le fichier (espaces ignorés), et le modèle est relancé s'il en invente |
+| `utilite` | `haute` (à couvrir), `moyenne` (si pertinent), `nulle` (écartée : reste dans l'index, n'est jamais injectée) |
+| `themes` | un à trois mots-clés |
+
+L'utilité est jugée par rapport au manuel visé (titre, objectif, public du sujet). Un fichier long est découpé en blocs (titres Markdown, paragraphes, lignes, tranches : rien n'est perdu). Les résultats sont mis en cache dans `sources_index.json` selon l'empreinte du contenu **et** du contexte du sujet : seuls les fichiers nouveaux ou modifiés sont ré-analysés ; un fichier supprimé quitte l'index.
+
+Une passe de **consolidation** fusionne les doublons entre fichiers (provenances conservées dans `autres_sources`) et signale les **contradictions** (`manual sources conflicts`) ; elle n'est refaite que si les unités changent.
+
+### 12 bis.2 Affectation exclusive : `sources_map.yml`
+
+Chaque unité utile reçoit **un seul chapitre principal** (qui la développe : pas de redite entre chapitres) et, facultativement, un chapitre **secondaire** qui y renvoie en une phrase. L'introduction et la conclusion peuvent en recevoir. La carte est un YAML éditable :
+
+```yaml
+Raisonnement et exemples:     # titre du chapitre dans toc.yml
+  principal: [biblio.md#1, biblio.md#2]
+  secondaire: []
+orphelines: [themes.md#4]     # unités laissées de côté
+```
+
+- Seules les unités **nouvelles ou sans chapitre** sont affectées : vos retouches (et commentaires) restent. `sources assign --force` recalcule tout (ancienne carte en `sources_map.yml.bak`).
+- Un chapitre renommé ou supprimé dans `toc.yml`, ou une unité disparue, sont retirés de la carte ; les unités concernées sont réaffectées.
+- Une unité principale dans deux chapitres, ou une carte mal formée, est refusée avec une erreur explicite.
+- `manual sources orphans` liste la matière utile qu'aucun chapitre ne développe : un signal pour revoir le plan.
+
+### 12 bis.3 Dans la rédaction
+
+Le prompt d'un chapitre (`write`, `redo`, `improve`) reçoit un bloc **Matière fournie par l'auteur**, groupé par type avec une consigne adaptée : citer exactement les références (sans en inventer), reprendre et étoffer les passages, développer thèmes et idées, reformuler faits et exemples. Les unités `haute` sont marquées **À COUVRIR** ; les renvois indiquent le chapitre qui développe l'unité. Une contradiction (⚠) doit être présentée comme un débat. Statut des sources : **de la matière, pas une vérité**.
+
+Le bloc est limité par `sources.max_prompt_chars` : si nécessaire les unités de moindre priorité perdent d'abord leur extrait, puis sont omises, et le bloc le **dit** (`Omis faute de place : …`). Une unité omise n'est jamais exigée du rédacteur.
+
+### 12 bis.4 Relecture : la couverture
+
+Quand un chapitre a des unités À COUVRIR, le juge reçoit un critère **bloquant** `couverture_sources` : chaque unité doit être traitée, ou explicitement écartée par le rédacteur avec une ligne `<!-- écarté [id] : motif -->` (motif recevable : hors sujet, douteux). Une unité ni traitée ni écartée provoque une réécriture. Les commentaires d'écart sont retirés du fichier du chapitre et gardés dans `manifest.json` ; `manual status` affiche `sources : x/y traitées, z écartée(s)`.
+
+### 12 bis.5 Dans le plan
+
+`init` et `improve-toc` reçoivent un résumé de la matière **par thème** (nombre d'unités, types, quelques énoncés) : les thèmes utiles doivent trouver leur place dans la structure. Ensuite l'affectation est (re)calculée. Les sources n'ont aucun effet sur un sujet qui n'en a pas : prompts et coûts sont inchangés.
+
+### 12 bis.6 Coût et limites
+
+- Un appel d'analyse par fichier (ou par bloc), un appel d'affectation par lot, une consolidation : mis en cache, relancés seulement quand les sources, le contexte du sujet ou le plan changent.
+- L'affectation par LLM reste approximative : la carte est faite pour être corrigée à la main.
+- Pas de recherche vectorielle : l'affectation passe par le LLM (aucun fournisseur d'embeddings n'est configuré).
+- La qualité de l'extraction et de l'affectation dépend du modèle `model_think` ; la vérification mot pour mot ne garantit que la fidélité des extraits, pas l'exactitude des sources.
+
+---
+
 ## 13. Publication LinkedIn
 
 `manual publish N [--no-image]` prépare, pour une section **terminée**, un paquet dans `output/<slug>/publish/<section>/` :
@@ -560,11 +656,13 @@ Dans `output/<slug>/` (ou `--output`) :
 | `NN_….candidate.md` | Version d'`improve` refusée par la relecture |
 | `memory.md` | Digest structuré transmis aux rédactions |
 | `glossaire.md` | Glossaire généré |
+| `sources_index.json` | Unités de matière extraites des documents de référence (cache) |
+| `sources_map.yml` | Affectation des unités aux chapitres (éditable) |
 | `toc_history/<date-heure>/` | Anciens plans archivés par `improve-toc` |
 | `traces/calls.jsonl` | Journal de tous les appels LLM |
 | `publish/<section>/` | Paquets de publication LinkedIn |
 
-Dans `subjects/<slug>/` : `subject.yml`, `requirements.yml`, éventuellement `system_prompt.md`, `toc_instruction.md`, et les `*.bak` créés par `subject refine` et `subject criteria`.
+Dans `subjects/<slug>/` : `subject.yml`, `requirements.yml`, `sources/` (documents de référence), éventuellement `system_prompt.md`, `toc_instruction.md`, et les `*.bak` créés par `subject refine` et `subject criteria`.
 
 Le nom de fichier d'une section est `<numéro sur 2 chiffres>_<slug du titre>.md` (le slug est dérivé du titre : ASCII, minuscules, tirets).
 
@@ -608,7 +706,7 @@ Tout le texte envoyé aux modèles est dans `prompts/` (prompts propres à un su
 |---|---|---|
 | `system_prompt.md` | Prompt système (rempli par `subject.yml`) | champs du sujet |
 | `toc_instruction.md` | Génération du plan | `plan_directeur`, … |
-| `section_instruction.md` | Rédaction d'une section | `numero`, `titre`, `intitule`, `description`, `sous_sections`, `plan`, `digest`, `role_note` |
+| `section_instruction.md` | Rédaction d'une section | `numero`, `titre`, `intitule`, `description`, `sous_sections`, `plan`, `digest`, `role_note`, `sources` |
 | `improve_instruction.md` | Amélioration d'une section | idem + `consigne`, `contenu_existant` |
 | `improve_default_instruction.md` | Consigne d'amélioration par défaut | — |
 | `role_introduction.md`, `role_conclusion.md` | Consigne propre à l'introduction / la conclusion (injectée comme `$role_note`) | — |
@@ -617,6 +715,9 @@ Tout le texte envoyé aux modèles est dans `prompts/` (prompts propres à un su
 | `toc_improve_instruction.md`, `toc_improve_default_instruction.md` | Amélioration du plan | `toc_actuelle`, `consigne`, `chapitres_figes` |
 | `glossary_extract_instruction.md` | Extraction des termes d'un chapitre | `numero`, `titre`, `texte` |
 | `glossary_merge_instruction.md` | Consolidation du glossaire | `entrees` |
+| `sources_extract_instruction.md` | Découpe d'un document en unités de matière | `contexte`, `fichier`, `texte` |
+| `sources_consolidate_instruction.md` | Doublons et contradictions entre unités | `unites` |
+| `sources_assign_instruction.md` | Affectation des unités aux chapitres | `plan`, `chapitres`, `unites` |
 | `author_system_prompt.md`, `subject_generate_instruction.md`, `subject_refine_instruction.md`, `partie_criteria_instruction.md` | Rédaction assistée des sujets et critères | variables selon le fichier |
 | `subject_template.yml` | Squelette d'un nouveau sujet | — |
 | `linkedin_post_instruction.md` | Brouillon du post | — |
@@ -638,6 +739,8 @@ manual_cli/
   schemas.py           TocSchema, GeneratedTocSchema, Cadre, Chapitre, Partie, JudgeVerdict
   memory.py            digest structuré (mise à jour, compression)
   glossary.py          extraction par chapitre et consolidation
+  sources.py           documents de référence : découpe, unités de matière, cache, consolidation
+  sources_assign.py    affectation aux chapitres (sources_map.yml), bloc injecté, résumé pour le plan
   parsing.py           extraction/validation du JSON des modèles (call_structured, nouvelles tentatives)
   patterns.py          sélection de sections (-s 1 3 5-8)
   requirements_loader.py   lecture et assemblage des critères
@@ -712,6 +815,7 @@ Git : branche de travail `v0.1`, branche principale `main`, dépôt public `orig
 - **Critères par partie fragiles** : indexés sur le titre exact des parties.
 - **Mémoire et `improve`** : le digest mentionne déjà la version actuelle d'un chapitre avant son amélioration ; des redites sont possibles sur ce chapitre.
 - **Redites entre sections** : réduites par le plan de l'ouvrage et la mémoire structurée, non éliminées ; l'efficacité dépend du modèle. Le contrôle reste humain (`improve` avec consigne).
+- **Documents de référence** : affectation et extraction approximatives (voir 12 bis.6) ; seuls `.md`/`.txt` sont lus ; une unité écartée à tort par le rédacteur est signalée, pas empêchée.
 - **Glossaire** : régénéré en entier, limité aux chapitres terminés ; la qualité de la fusion dépend du modèle.
 - **Commentaires YAML** perdus par `subject refine` et `subject criteria` (l'ancienne version reste en `.bak`) ; `toc.yml` n'est réécrit que lorsque le plan change réellement (`init`, `improve-toc`, migration d'un ancien manifeste) : vos commentaires y survivent à `write`, mais pas à ces réécritures.
 - **Publication LinkedIn** manuelle (limite de l'API).

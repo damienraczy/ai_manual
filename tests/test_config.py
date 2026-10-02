@@ -367,3 +367,34 @@ def test_load_config_reports_all_missing_roles_at_once(tmp_path, env_file, monke
     assert "model_judge" in message
     assert "model_think" in message
     assert "model_rewriter" in message
+
+
+# --- réglages (section libre de params.yml) ------------------------------------------
+
+
+def test_setting_reads_a_value_from_params_yml_on_each_call(tmp_path, env_file):
+    params = tmp_path / "params.yml"
+    params.write_text(PARAMS_YAML + "\nsources:\n  max_chunk_chars: 500\n", encoding="utf-8")
+    cfg = AppConfig(params_path=params, env_path=env_file)
+
+    assert cfg.setting("sources", "max_chunk_chars") == 500
+
+    params.write_text(PARAMS_YAML + "\nsources:\n  max_chunk_chars: 900\n", encoding="utf-8")
+    assert cfg.setting("sources", "max_chunk_chars") == 900
+
+
+def test_setting_missing_raises_an_explicit_error(tmp_path, env_file):
+    params = tmp_path / "params.yml"
+    params.write_text(PARAMS_YAML, encoding="utf-8")
+    cfg = AppConfig(params_path=params, env_path=env_file)
+
+    with pytest.raises(ConfigError, match="sources.max_chunk_chars"):
+        cfg.setting("sources", "max_chunk_chars")
+
+
+def test_setting_in_static_mode_reads_the_settings_mapping():
+    cfg = AppConfig(settings={"sources": {"max_chunk_chars": 10}})
+
+    assert cfg.setting("sources", "max_chunk_chars") == 10
+    with pytest.raises(ConfigError):
+        cfg.setting("sources", "absent")
