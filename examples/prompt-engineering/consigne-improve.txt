@@ -1,0 +1,5 @@
+Enrichis ce chapitre :
+- ajoute un exemple de prompt complet (dans un bloc de code) pour chaque technique présentée ;
+- supprime les redites avec les autres chapitres : ne reprends pas les images, métaphores
+  ni exemples déjà utilisés ailleurs, renvoie plutôt au chapitre concerné ;
+- termine par une courte checklist de bonnes pratiques.

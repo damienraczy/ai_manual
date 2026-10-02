@@ -1,0 +1,5 @@
+Relis le plan comme un éditeur exigeant :
+- ajoute un chapitre sur l'évaluation et la mesure de la qualité d'un prompt s'il manque ;
+- vérifie que la progression va bien du débutant à l'expert, sans saut de niveau ;
+- fusionne les chapitres qui se recouvrent et supprime les sous-sections redondantes ;
+- garde 2 à 5 sous-sections par chapitre.

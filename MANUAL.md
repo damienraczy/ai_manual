@@ -31,14 +31,14 @@ Ce document est la référence exhaustive de `ai_manual` (commande `manual`). Le
 
 ## 1. Présentation
 
-`ai_manual` rédige un **manuel de référence complet** en orchestrant plusieurs appels à des modèles de langage (LLM) :
+`ai_manual` rédige un **manuel de référence complet, sur le sujet de votre choix**, en orchestrant plusieurs appels à des modèles de langage (LLM) :
 
 1. un modèle propose une **table des matières** (le *plan*) ;
 2. chaque **section** est rédigée en suivant strictement ce plan ;
 3. un second modèle (le *juge*) relit chaque section selon des **critères** ; en cas de défaut bloquant, un *réécrivain* corrige, dans la limite d'un nombre de cycles ;
 4. après chaque section acceptée, un **résumé cumulé** (la *mémoire*) est mis à jour, pour la cohérence d'ensemble et pour éviter les répétitions.
 
-Le dépôt ne fournit aucun sujet : le dossier `subjects/` n'est pas versionné (il est ignoré par `.gitignore`) et chaque installation crée les siens. Un sujet se crée en une commande à partir d'un descriptif.
+Un exemple guidé pas à pas (manuel de Prompt Engineering) est fourni dans [`examples/prompt-engineering/`](examples/prompt-engineering/README.md). Le dépôt ne fournit aucun sujet prêt dans `subjects/` : le dossier `subjects/` n'est pas versionné (il est ignoré par `.gitignore`) et chaque installation crée les siens. Un sujet se crée en une commande à partir d'un descriptif.
 
 Une partie séparée et optionnelle (`manual publish`) prépare, sans rien publier, des paquets de publication LinkedIn à partir de sections terminées.
 
@@ -197,7 +197,7 @@ Un champ inconnu, manquant ou vide est refusé avec un message explicite. Le gab
 
 Trois niveaux s'additionnent, pour chaque section :
 
-1. **Communs** : `requirements/requirements.yml` — définitions claires, cohérence avec le plan, exemples concrets, avantages et limites, style, Markdown propre, marqueur de fin (bloquants) ; tableaux comparatifs, checklist (recommandés)…
+1. **Communs** : `requirements/requirements.yml`, neutres vis-à-vis du sujet — définitions claires, cohérence avec le plan, exemples concrets, avantages et limites, style, Markdown propre, marqueur de fin (bloquants) ; tableaux comparatifs, checklist, anti-patterns, cas d'usage, absence de redites (recommandés). Les exigences propres à une discipline (par exemple « un exemple de prompt complet » pour le prompt engineering) vont dans le `requirements.yml` du sujet.
 2. **Du sujet** (`generic`) : `subjects/<slug>/requirements.yml`.
 3. **D'une partie** (`parties`) : clé = **titre exact** de la partie dans le plan. Une introduction ou une conclusion n'appartient à aucune partie : elle n'est jugée que sur les critères communs et ceux du sujet.
 

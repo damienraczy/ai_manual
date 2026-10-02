@@ -71,6 +71,9 @@ def test_shared_requirements_are_subject_agnostic():
     assert data["generic"]
     assert "parties" not in data
     assert "multi_modeles" not in [c["id"] for c in data["generic"]]
+    text = " ".join(c["description"] for c in data["generic"]).lower()
+    for word in ("prompt", "few-shot", "token"):
+        assert word not in text, f"critère commun lié au prompt engineering : {word!r}"
 
 
 def test_authoring_templates_use_exactly_their_placeholders():

@@ -2,9 +2,9 @@
 
 <img src="assets/social-preview.jpg" alt="ai_manual : un robot présente « The Basics of Prompt Engineering » sur un tableau" width="800">
 
-`ai_manual` est un outil en ligne de commande (`manual`) qui **rédige de bout en bout un manuel de référence complet** en orchestrant plusieurs appels à des modèles de langage (LLM) : il propose un plan, écrit chaque chapitre, le fait relire et corriger automatiquement par un second modèle, puis garde en mémoire ce qui a été dit pour rester cohérent d'un chapitre à l'autre.
+`ai_manual` est un outil en ligne de commande (`manual`) qui **rédige de bout en bout un manuel de référence complet, sur n'importe quel sujet** (une discipline technique, un métier, un domaine juridique, une méthode, un cours…), en orchestrant plusieurs appels à des modèles de langage (LLM) : il propose un plan, écrit chaque chapitre, le fait relire et corriger automatiquement par un second modèle, puis garde en mémoire ce qui a été dit pour rester cohérent d'un chapitre à l'autre.
 
-Il fonctionne **sujet par sujet**. Le dépôt ne fournit aucun sujet : le dossier `subjects/` n'est pas versionné et chacun crée les siens. Un sujet se crée en une commande à partir d'un descriptif (court ou long, en fichier), puis se retouche à volonté.
+Il fonctionne **sujet par sujet**. Le dépôt ne fournit aucun sujet : le dossier `subjects/` n'est pas versionné et chacun crée les siens. Un sujet se crée en une commande à partir d'un descriptif (court ou long, en fichier), puis se retouche à volonté. **Pour voir toute la démarche sur un cas concret, suivez l'[exemple guidé pas à pas](examples/prompt-engineering/README.md)** : créer un manuel de Prompt Engineering, du sujet au glossaire et à la publication.
 
 **En bref**
 
@@ -24,6 +24,7 @@ Il fonctionne **sujet par sujet**. Le dépôt ne fournit aucun sujet : le dossie
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Démarrage rapide](#démarrage-rapide)
+- [Exemple guidé : un manuel de Prompt Engineering](#exemple-guidé--un-manuel-de-prompt-engineering)
 - [Référence des commandes](#référence-des-commandes)
 - [Guide : les sujets](#guide--les-sujets)
 - [Guide : écrire et suivre le manuel](#guide--écrire-et-suivre-le-manuel)
@@ -154,6 +155,10 @@ manual --subject mon-sujet write                         # 6. rédiger tout le r
 ```
 
 Le dossier `subjects/` est créé au premier `manual subject new` : un clone du dépôt n'a aucun sujet au départ. Tant qu'il n'existe qu'un seul sujet, `--subject` peut être omis.
+
+## Exemple guidé : un manuel de Prompt Engineering
+
+Le dossier [`examples/prompt-engineering/`](examples/prompt-engineering/README.md) déroule, étape par étape et commande par commande, la création d'un manuel complet : création du sujet (par le modèle à partir d'un descriptif, ou depuis un sujet tout prêt), relecture, plan (génération, édition à la main, amélioration), critères par partie, premier chapitre, rédaction du manuel entier, corrections, glossaire, publication. Il contient le descriptif, le sujet prêt à l'emploi et des exemples de consignes. La démarche est la même pour tout autre sujet.
 
 ## Référence des commandes
 
@@ -436,6 +441,7 @@ manual_cli/            code source
   tracing.py, web/     journal des appels et interface de consultation
   mcp_affinity/        script annexe indépendant (liste les outils d'un serveur MCP local), non utilisé par `manual`
 prompts/               gabarits de prompts communs à tous les sujets
+examples/              exemple guidé pas à pas (manuel de Prompt Engineering)
 subjects/              un dossier par sujet de manuel (subject.yml, critères propres) ; non versionné, créé par `manual subject new`
 requirements/          critères de qualité communs utilisés par le juge
 assets/                image de prévisualisation sociale (1280x640)

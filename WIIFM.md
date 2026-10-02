@@ -2,7 +2,7 @@
 
 ## Le principe
 
-Ai_manual rédige de bout en bout un manuel de référence complet de prompt engineering, qui va des bases jusqu'au niveau expert. En modifiant un seul prompt, il est possible d'en changer le sujet.
+Ai_manual rédige de bout en bout un manuel de référence complet sur le sujet de votre choix, des bases jusqu'au niveau expert. Le sujet se décrit en quelques lignes (public, niveau, ton, ce qu'il faut couvrir ou exclure) ; il peut s'agir de prompt engineering comme de cybersécurité, de droit, de cuisine ou de n'importe quelle discipline. Un exemple guidé pas à pas, sur le prompt engineering, est fourni dans `examples/prompt-engineering/`.
 
 ## Comment ça marche
 

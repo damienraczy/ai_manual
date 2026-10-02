@@ -1,0 +1,18 @@
+# Critères propres au sujet, ajoutés aux critères communs (requirements/requirements.yml).
+# severity: "bloquant" force une réécriture si non rempli ; "recommande" est signalé mais n'empêche pas l'acceptation.
+#
+# Les critères par partie (clé `parties`) ne sont pas fournis ici : leur clé est le titre EXACT
+# des parties du plan que le modèle génère, qui change d'une génération à l'autre.
+# On les obtient après `manual init` avec `manual subject criteria` (voir le guide).
+generic:
+  - id: exemples_prompts
+    description: "Chaque technique majeure est illustrée par au moins un exemple de prompt complet, présenté dans un bloc de code et accompagné du résultat attendu."
+    severity: bloquant
+
+  - id: termes_en_anglais
+    description: "Les termes techniques établis restent en anglais (prompt, few-shot, token, chain-of-thought, etc.), expliqués à leur première occurrence."
+    severity: bloquant
+
+  - id: multi_modeles
+    description: "Quand c'est pertinent, des remarques ou variations sont données pour plusieurs familles de modèles, pas un seul fournisseur."
+    severity: recommande

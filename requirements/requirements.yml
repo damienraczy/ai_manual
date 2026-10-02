@@ -5,7 +5,7 @@ version: 1
 # severity: "bloquant" force une réécriture si non rempli ; "recommande" est signalé mais n'empêche pas l'acceptation.
 generic:
   - id: definition_claire
-    description: "Chaque concept/technique abordé est clairement défini avant d'être illustré."
+    description: "Chaque notion abordée est clairement définie avant d'être illustrée."
     severity: bloquant
 
   - id: coherence_toc
@@ -13,15 +13,15 @@ generic:
     severity: bloquant
 
   - id: exemples_concrets
-    description: "Au moins un exemple concret (prompt illustratif) est fourni pour chaque technique majeure présentée."
+    description: "Au moins un exemple concret est fourni pour chaque notion ou méthode majeure présentée."
     severity: bloquant
 
   - id: avantages_limites
-    description: "Les avantages et les limites de chaque technique présentée sont explicités."
+    description: "Les avantages et les limites de chaque notion ou méthode présentée sont explicités."
     severity: bloquant
 
   - id: style_langue
-    description: "Rédaction en français clair, professionnel et pédagogique ; les termes techniques établis restent en anglais (prompt, few-shot, token, etc.)."
+    description: "Rédaction claire, professionnelle et pédagogique, dans la langue et au ton du sujet ; la terminologie reste cohérente d'un bout à l'autre du texte."
     severity: bloquant
 
   - id: format_markdown
@@ -33,7 +33,7 @@ generic:
     severity: bloquant
 
   - id: tableaux_comparatifs
-    description: "Un tableau comparatif ou récapitulatif est présent si la section compare plusieurs techniques ou variantes."
+    description: "Un tableau comparatif ou récapitulatif est présent si la section compare plusieurs approches ou variantes."
     severity: recommande
 
   - id: checklist
@@ -45,7 +45,7 @@ generic:
     severity: recommande
 
   - id: cas_usage
-    description: "Un cas d'usage réel (entreprise, recherche ou production) illustre l'application de la technique."
+    description: "Un cas d'usage réel (entreprise, recherche ou terrain) illustre l'application de la notion ou de la méthode."
     severity: recommande
 
   - id: pas_de_repetition

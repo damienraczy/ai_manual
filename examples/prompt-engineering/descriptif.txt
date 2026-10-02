@@ -1,0 +1,19 @@
+Manuel de référence de Prompt Engineering, en français, du niveau débutant au niveau expert.
+
+Public : ingénieurs et professionnels généralistes (profil Master, sans formation
+en informatique ni en IA) qui veulent maîtriser l'écriture de prompts efficaces.
+
+Objectif : produire un manuel complet, structuré et très à jour (2024-2026), des
+principes fondamentaux jusqu'aux techniques expertes : fondamentaux, techniques
+intermédiaires, techniques avancées, patterns experts, évaluation et optimisation,
+applications industrielles, techniques de frontière 2025-2026.
+
+À couvrir : anatomie d'un prompt, zero-shot et few-shot, raisonnement guidé
+(chain-of-thought), décomposition de tâches et chaînage, contrôle des formats de
+sortie, évaluation et mesure de la qualité, bonnes pratiques par famille de modèles.
+
+À exclure : RAG, programmation, fine-tuning. Les outils (agents, MCP, etc.) peuvent
+être expliqués, mais toujours sans écrire de code.
+
+Ton : professionnel et accessible. Chaque chapitre donne des exemples de prompts
+complets, des anti-patterns et, quand c'est pertinent, des variantes selon le modèle.
