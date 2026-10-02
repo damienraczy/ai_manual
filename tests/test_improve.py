@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -99,7 +100,8 @@ def test_improve_seeds_the_draft_with_existing_text_and_default_instruction(cfg,
     assert "ancien contenu" in prompt
     assert "Intro" in prompt and "1.1 Def — définit le terme" in prompt
     assert "mémoire initiale" in prompt
-    assert "Relis" in prompt
+    default = (Path(__file__).resolve().parent.parent / "prompts" / "improve_default_instruction.md").read_text(encoding="utf-8")
+    assert default.strip() in prompt
     assert MARKER in prompt
     assert "$" not in prompt
 

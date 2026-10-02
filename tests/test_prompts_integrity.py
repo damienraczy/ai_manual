@@ -95,7 +95,7 @@ def test_improve_templates_use_exactly_their_placeholders():
     }
     default = Template((PROMPTS_DIR / "improve_default_instruction.md").read_text(encoding="utf-8"))
     assert set(default.get_identifiers()) == set()
-    assert "Relis" in default.template
+    assert default.template.strip()
 
 
 def test_toc_improve_templates_use_exactly_their_placeholders():
