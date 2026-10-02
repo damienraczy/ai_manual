@@ -4,7 +4,7 @@
 
 `ai_manual` est un outil en ligne de commande (`manual`) qui **rédige de bout en bout un manuel de référence complet** en orchestrant plusieurs appels à des modèles de langage (LLM) : il propose un plan, écrit chaque chapitre, le fait relire et corriger automatiquement par un second modèle, puis garde en mémoire ce qui a été dit pour rester cohérent d'un chapitre à l'autre.
 
-Il fonctionne **sujet par sujet**. Le dépôt fournit un sujet complet (un manuel de *Prompt Engineering* en français, du niveau débutant au niveau expert) ; un nouveau sujet se crée en une commande à partir d'un descriptif, puis se retouche à volonté.
+Il fonctionne **sujet par sujet**. Le dépôt ne fournit aucun sujet : le dossier `subjects/` n'est pas versionné et chacun crée les siens. Un sujet se crée en une commande à partir d'un descriptif (court ou long, en fichier), puis se retouche à volonté.
 
 **En bref**
 
@@ -153,7 +153,7 @@ manual --subject mon-sujet write -s 1                    # 5. rédiger le chapit
 manual --subject mon-sujet write                         # 6. rédiger tout le reste
 ```
 
-Pour le sujet fourni : `manual --subject prompt-engineering init`, puis `write`. Tant qu'il n'existe qu'un seul sujet, `--subject` peut être omis.
+Le dossier `subjects/` est créé au premier `manual subject new` : un clone du dépôt n'a aucun sujet au départ. Tant qu'il n'existe qu'un seul sujet, `--subject` peut être omis.
 
 ## Référence des commandes
 
@@ -203,7 +203,7 @@ Deux options se placent **avant** la sous-commande :
 
 ## Guide : les sujets
 
-Un **sujet** est un dossier `subjects/<identifiant>/` qui décrit de quoi parle le manuel. Le dépôt fournit `subjects/prompt-engineering/`. Les règles de forme communes à tous les sujets (format JSON du plan, marqueur de fin de section, consignes de relecture) restent dans `prompts/` et ne se touchent pas.
+Un **sujet** est un dossier `subjects/<identifiant>/` qui décrit de quoi parle le manuel. Le dossier `subjects/` est **ignoré par git** (voir `.gitignore`) : les sujets restent locaux à chaque installation, à sauvegarder séparément si besoin. Les règles de forme communes à tous les sujets (format JSON du plan, marqueur de fin de section, consignes de relecture) restent dans `prompts/` et ne se touchent pas.
 
 ### Créer un sujet
 
@@ -436,7 +436,7 @@ manual_cli/            code source
   tracing.py, web/     journal des appels et interface de consultation
   mcp_affinity/        script annexe indépendant (liste les outils d'un serveur MCP local), non utilisé par `manual`
 prompts/               gabarits de prompts communs à tous les sujets
-subjects/              un dossier par sujet de manuel (subject.yml, critères propres)
+subjects/              un dossier par sujet de manuel (subject.yml, critères propres) ; non versionné, créé par `manual subject new`
 requirements/          critères de qualité communs utilisés par le juge
 assets/                image de prévisualisation sociale (1280x640)
 tests/                 suite de tests

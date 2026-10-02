@@ -348,23 +348,7 @@ def test_requirements_rejects_invalid_yaml(tmp_path):
         load_subject("cyber", tmp_path).requirements()
 
 
-# --- sujet fourni avec le dépôt -----------------------------------------------
-
-
-def test_bundled_prompt_engineering_subject_is_valid():
-    subject = load_subject("prompt-engineering")
-    assert "Prompt Engineering" in subject.system_prompt()
-    assert "RAG" in subject.system_prompt()
-    assert "frontier techniques 2025-2026" in subject.toc_instruction()
-    requirements = subject.requirements()
-    assert set(requirements["parties"]) == {
-        "Fondamentaux",
-        "Techniques avancées",
-        "Évaluation et optimisation",
-        "Frontier techniques 2025-2026",
-    }
-    assert "multi_modeles" in [c["id"] for c in requirements["generic"]]
-    assert "definition_claire" in [c["id"] for c in requirements["generic"]]
+# --- placeholder du squelette ---------------------------------------------------
 
 
 @pytest.mark.parametrize(

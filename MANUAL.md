@@ -38,7 +38,7 @@ Ce document est la référence exhaustive de `ai_manual` (commande `manual`). Le
 3. un second modèle (le *juge*) relit chaque section selon des **critères** ; en cas de défaut bloquant, un *réécrivain* corrige, dans la limite d'un nombre de cycles ;
 4. après chaque section acceptée, un **résumé cumulé** (la *mémoire*) est mis à jour, pour la cohérence d'ensemble et pour éviter les répétitions.
 
-Le dépôt fournit trois sujets (`prompt-engineering`, `cybersecurite-dirigeants`, `risque-ia`) ; un sujet se crée en une commande à partir d'un descriptif.
+Le dépôt ne fournit aucun sujet : le dossier `subjects/` n'est pas versionné (il est ignoré par `.gitignore`) et chaque installation crée les siens. Un sujet se crée en une commande à partir d'un descriptif.
 
 Une partie séparée et optionnelle (`manual publish`) prépare, sans rien publier, des paquets de publication LinkedIn à partir de sections terminées.
 
@@ -163,7 +163,7 @@ Les fournisseurs autorisés sont imposés par le code. **Seul le bloc nommé exa
 
 ## 5. Les sujets
 
-Un **sujet** est un dossier `subjects/<slug>/`. Le slug ne contient que minuscules, chiffres et tirets.
+Un **sujet** est un dossier `subjects/<slug>/`. Le slug ne contient que minuscules, chiffres et tirets. Le dossier `subjects/` n'est pas versionné : il est créé au premier `manual subject new`, et les sujets sont à sauvegarder séparément (un clone du dépôt n'en contient aucun).
 
 ### 5.1 Contenu d'un dossier de sujet
 
@@ -645,7 +645,8 @@ manual_cli/
   publish.py           paquet LinkedIn
   tracing.py, web/     journal des appels et interface de consultation
   mcp_affinity/        script annexe indépendant, non utilisé par `manual`
-prompts/  requirements/  subjects/  tests/  assets/  output/
+prompts/  requirements/  tests/  assets/   (versionnés)
+subjects/  output/                         (locaux, non versionnés)
 ```
 
 Points d'architecture notables :
